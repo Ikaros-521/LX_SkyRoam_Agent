@@ -42,7 +42,12 @@ class TravelPlan(BaseModel):
     items = relationship("TravelPlanItem", back_populates="travel_plan", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<TravelPlan(title={self.title}, destination={self.destination})>"
+        try:
+            # 安全地获取属性，避免触发懒加载
+            obj_id = getattr(self, 'id', 'N/A')
+            return f"<TravelPlan(id={obj_id})>"
+        except Exception:
+            return f"<TravelPlan(instance)>"
 
 
 class TravelPlanItem(BaseModel):
@@ -73,4 +78,9 @@ class TravelPlanItem(BaseModel):
     travel_plan = relationship("TravelPlan", back_populates="items")
     
     def __repr__(self):
-        return f"<TravelPlanItem(title={self.title}, type={self.item_type})>"
+        try:
+            # 安全地获取属性，避免触发懒加载
+            obj_id = getattr(self, 'id', 'N/A')
+            return f"<TravelPlanItem(id={obj_id})>"
+        except Exception:
+            return f"<TravelPlanItem(instance)>"

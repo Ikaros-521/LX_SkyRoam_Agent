@@ -2,7 +2,7 @@
 活动相关模型
 """
 
-from sqlalchemy import Column, String, Text, Float, Integer, JSON, DateTime, Boolean
+from sqlalchemy import Column, String, Text, Float, Integer, JSON, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import BaseModel

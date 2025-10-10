@@ -67,7 +67,7 @@ class PlanScorer:
         """价格评分"""
         try:
             total_cost = plan.get("total_cost", {}).get("total", 0)
-            budget = original_plan.budget or 5000  # 默认预算5000元
+            budget = getattr(original_plan, 'budget', None) or 5000  # 默认预算5000元
             
             if total_cost <= 0:
                 return 0.0
@@ -93,11 +93,13 @@ class PlanScorer:
             ratings = []
             
             # 收集所有评分
-            if plan.get("hotel", {}).get("rating"):
-                ratings.append(plan["hotel"]["rating"])
+            hotel = plan.get("hotel") or {}
+            if hotel.get("rating"):
+                ratings.append(hotel["rating"])
             
-            if plan.get("flight", {}).get("rating"):
-                ratings.append(plan["flight"]["rating"])
+            flight = plan.get("flight") or {}
+            if flight.get("rating"):
+                ratings.append(flight["rating"])
             
             for day in plan.get("daily_itineraries", []):
                 for attraction in day.get("attractions", []):

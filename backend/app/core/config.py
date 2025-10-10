@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: List[str] = ["*"]
     
     # 数据库配置
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/skyroam"
+    DATABASE_URL: str = "postgresql://postgres:123456@localhost:5432/skyroam"
     DATABASE_ECHO: bool = False
     
     # Redis配置
@@ -34,9 +34,12 @@ class Settings(BaseSettings):
     
     # OpenAI配置
     OPENAI_API_KEY: str = ""
+    OPENAI_API_BASE: str = "https://api.openai.com/v1"  # 自定义API地址
     OPENAI_MODEL: str = "gpt-4-turbo-preview"
     OPENAI_MAX_TOKENS: int = 4000
     OPENAI_TEMPERATURE: float = 0.7
+    OPENAI_TIMEOUT: int = 60  # API超时时间（秒）
+    OPENAI_MAX_RETRIES: int = 3  # 最大重试次数
     
     # 第三方API配置
     WEATHER_API_KEY: str = ""  # OpenWeatherMap

@@ -2,7 +2,7 @@
 旅行计划数据模式
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -14,6 +14,28 @@ class TravelPlanBase(BaseModel):
     destination: str = Field(..., description="目的地")
     start_date: datetime = Field(..., description="开始日期")
     end_date: datetime = Field(..., description="结束日期")
+    
+    @field_validator('start_date', 'end_date', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        """解析日期时间，确保无时区信息"""
+        if isinstance(v, str):
+            # 解析字符串格式的日期时间
+            try:
+                # 尝试解析带时区的格式
+                if 'T' in v or '+' in v or 'Z' in v:
+                    dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                    # 转换为无时区的本地时间
+                    return dt.replace(tzinfo=None)
+                else:
+                    # 解析无时区格式
+                    return datetime.fromisoformat(v)
+            except ValueError:
+                # 如果解析失败，尝试其他格式
+                from dateutil import parser
+                dt = parser.parse(v)
+                return dt.replace(tzinfo=None)
+        return v
     duration_days: int = Field(..., description="旅行天数")
     budget: Optional[float] = Field(None, description="预算")
     preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好")
@@ -70,10 +92,35 @@ class TravelPlanResponse(TravelPlanBase):
     selected_plan: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
-    items: List[TravelPlanItemResponse] = []
+    items: Optional[List[TravelPlanItemResponse]] = None
 
     class Config:
         from_attributes = True
+        
+    @classmethod
+    def from_orm(cls, obj):
+        """自定义ORM转换，避免懒加载问题"""
+        data = {
+            'id': obj.id,
+            'title': obj.title,
+            'description': obj.description,
+            'destination': obj.destination,
+            'start_date': obj.start_date,
+            'end_date': obj.end_date,
+            'duration_days': obj.duration_days,
+            'budget': obj.budget,
+            'preferences': obj.preferences,
+            'requirements': obj.requirements,
+            'user_id': obj.user_id,
+            'status': obj.status,
+            'score': obj.score,
+            'generated_plans': obj.generated_plans,
+            'selected_plan': obj.selected_plan,
+            'created_at': obj.created_at,
+            'updated_at': obj.updated_at,
+            'items': []  # 初始化为空列表，避免访问关系属性
+        }
+        return cls(**data)
 
 
 class TravelPlanGenerateRequest(BaseModel):
@@ -93,7 +140,7 @@ class TravelPlanListResponse(BaseModel):
 
 class TravelPlanExportRequest(BaseModel):
     """导出旅行计划请求模式"""
-    format: str = Field("pdf", description="导出格式", regex="^(pdf|json|html)$")
+    format: str = Field("pdf", description="导出格式", pattern="^(pdf|json|html)$")
     include_images: bool = Field(True, description="是否包含图片")
     include_map: bool = Field(True, description="是否包含地图")
     language: str = Field("zh", description="导出语言")

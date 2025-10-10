@@ -27,15 +27,13 @@ class BackgroundTaskManager:
         self.running = True
         logger.info("启动后台任务管理器")
         
-        # 启动各种后台任务
-        tasks = [
-            self.cache_cleanup_task(),
-            self.data_refresh_task(),
-            self.health_check_task(),
-            self.monitoring_task()
-        ]
+        # 启动各种后台任务（非阻塞）
+        asyncio.create_task(self.cache_cleanup_task())
+        asyncio.create_task(self.data_refresh_task())
+        asyncio.create_task(self.health_check_task())
+        asyncio.create_task(self.monitoring_task())
         
-        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info("后台任务已启动")
     
     async def stop_tasks(self):
         """停止所有后台任务"""
@@ -67,6 +65,7 @@ class BackgroundTaskManager:
                 
             except Exception as e:
                 logger.error(f"缓存清理任务失败: {e}")
+                # 任务失败时继续运行，避免阻塞
                 await asyncio.sleep(300)  # 5分钟后重试
     
     async def data_refresh_task(self):
@@ -75,30 +74,33 @@ class BackgroundTaskManager:
             try:
                 logger.info("执行数据刷新任务")
                 
-                # 刷新热门目的地的数据
+                # 刷新热门目的地的数据（减少数量，避免阻塞）
                 popular_destinations = [
-                    "北京", "上海", "广州", "深圳", "杭州",
-                    "成都", "西安", "南京", "武汉", "重庆"
+                    "北京", "上海", "广州", "深圳", "杭州"
                 ]
                 
                 for destination in popular_destinations:
+                    if not self.running:  # 检查是否仍在运行
+                        break
+                        
                     try:
-                        # 刷新景点数据
-                        await self.data_collector.collect_attraction_data(destination)
+                        # 并行刷新数据，提高效率
+                        tasks = [
+                            self.data_collector.collect_attraction_data(destination),
+                            self.data_collector.collect_restaurant_data(destination),
+                            self.data_collector.collect_transportation_data(destination)
+                        ]
                         
-                        # 刷新餐厅数据
-                        await self.data_collector.collect_restaurant_data(destination)
-                        
-                        # 刷新交通数据
-                        await self.data_collector.collect_transportation_data(destination)
-                        
+                        await asyncio.gather(*tasks, return_exceptions=True)
                         logger.info(f"已刷新 {destination} 的数据")
                         
                         # 避免请求过于频繁
-                        await asyncio.sleep(10)
+                        await asyncio.sleep(5)
                         
                     except Exception as e:
                         logger.error(f"刷新 {destination} 数据失败: {e}")
+                        # 继续处理下一个目的地
+                        continue
                 
                 logger.info("数据刷新完成")
                 
@@ -107,6 +109,7 @@ class BackgroundTaskManager:
                 
             except Exception as e:
                 logger.error(f"数据刷新任务失败: {e}")
+                # 任务失败时继续运行，避免阻塞
                 await asyncio.sleep(1800)  # 30分钟后重试
     
     async def health_check_task(self):
@@ -115,25 +118,25 @@ class BackgroundTaskManager:
             try:
                 logger.info("执行健康检查任务")
                 
-                # 检查数据库连接
-                from app.core.database import async_engine
-                async with async_engine.begin() as conn:
-                    await conn.execute("SELECT 1")
+                # 并行检查各种连接，避免阻塞
+                tasks = [
+                    self._check_database(),
+                    self._check_redis(),
+                    self._check_external_apis()
+                ]
                 
-                # 检查Redis连接
-                redis_client = await get_redis()
-                await redis_client.ping()
+                results = await asyncio.gather(*tasks, return_exceptions=True)
                 
-                # 检查外部API连接
-                await self._check_external_apis()
-                
-                logger.info("健康检查通过")
+                # 检查结果
+                success_count = sum(1 for result in results if not isinstance(result, Exception))
+                logger.info(f"健康检查完成: {success_count}/{len(tasks)} 项通过")
                 
                 # 每10分钟执行一次
                 await asyncio.sleep(600)
                 
             except Exception as e:
                 logger.error(f"健康检查失败: {e}")
+                # 任务失败时继续运行，避免阻塞
                 await asyncio.sleep(300)  # 5分钟后重试
     
     async def monitoring_task(self):
@@ -175,6 +178,28 @@ class BackgroundTaskManager:
                 logger.error(f"监控任务失败: {e}")
                 await asyncio.sleep(300)  # 5分钟后重试
     
+    async def _check_database(self):
+        """检查数据库连接"""
+        try:
+            from app.core.database import async_engine
+            from sqlalchemy import text
+            async with async_engine.begin() as conn:
+                await conn.execute(text("SELECT 1"))
+            return True
+        except Exception as e:
+            logger.error(f"数据库检查失败: {e}")
+            raise
+    
+    async def _check_redis(self):
+        """检查Redis连接"""
+        try:
+            redis_client = await get_redis()
+            await redis_client.ping()
+            return True
+        except Exception as e:
+            logger.error(f"Redis检查失败: {e}")
+            raise
+    
     async def _check_external_apis(self):
         """检查外部API连接"""
         try:
@@ -192,6 +217,7 @@ class BackgroundTaskManager:
             
             # 检查其他API
             # ...
+            return True
             
         except Exception as e:
             logger.error(f"外部API检查失败: {e}")

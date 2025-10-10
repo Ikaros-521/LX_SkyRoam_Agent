@@ -16,6 +16,7 @@ from app.services.data_processor import DataProcessor
 from app.services.plan_generator import PlanGenerator
 from app.services.plan_scorer import PlanScorer
 from app.tools.mcp_client import MCPClient
+from app.tools.openai_client import openai_client
 
 
 class AgentService:
@@ -28,6 +29,7 @@ class AgentService:
         self.plan_generator = PlanGenerator()
         self.plan_scorer = PlanScorer()
         self.mcp_client = MCPClient()
+        self.openai_client = openai_client
     
     async def generate_travel_plans(
         self, 

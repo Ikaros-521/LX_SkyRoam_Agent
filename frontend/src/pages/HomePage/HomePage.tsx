@@ -52,8 +52,20 @@ const HomePage: React.FC = () => {
       // 模拟API调用
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // 跳转到计划页面
-      navigate('/plan');
+      // 跳转到计划页面，传递表单数据（将dayjs对象转换为字符串）
+      const formDataToPass = {
+        ...values,
+        dateRange: [
+          values.dateRange[0].format('YYYY-MM-DD'),
+          values.dateRange[1].format('YYYY-MM-DD')
+        ]
+      };
+      
+      navigate('/plan', { 
+        state: { 
+          formData: formDataToPass 
+        } 
+      });
     } catch (error) {
       console.error('提交失败:', error);
     } finally {

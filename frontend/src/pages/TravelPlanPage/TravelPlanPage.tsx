@@ -23,8 +23,9 @@ import {
   CheckCircleOutlined,
   LoadingOutlined
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
+import { buildApiUrl, API_ENDPOINTS, REQUEST_CONFIG } from '../../config/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -41,12 +42,40 @@ interface TravelRequest {
 
 const TravelPlanPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [planId, setPlanId] = useState<number | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string>('idle');
   const [progress, setProgress] = useState(0);
+  const [autoSubmitting, setAutoSubmitting] = useState(false);
+
+  // 接收来自首页的表单数据并自动提交
+  useEffect(() => {
+    const formData = location.state?.formData;
+    if (formData) {
+      console.log('接收到首页表单数据，自动提交:', formData);
+      
+      // 处理日期数据：将字符串转换为dayjs对象
+      const processedData = { ...formData };
+      if (formData.dateRange && Array.isArray(formData.dateRange) && formData.dateRange.length === 2) {
+        processedData.dateRange = [
+          dayjs(formData.dateRange[0]),
+          dayjs(formData.dateRange[1])
+        ];
+      }
+      
+      // 预填表单
+      form.setFieldsValue(processedData);
+      
+      // 自动提交表单
+      setAutoSubmitting(true);
+      setTimeout(() => {
+        form.submit();
+      }, 100); // 稍微延迟确保表单已渲染
+    }
+  }, [location.state, form]);
 
   const steps = [
     {
@@ -73,19 +102,24 @@ const TravelPlanPage: React.FC = () => {
 
   const handleSubmit = async (values: TravelRequest) => {
     setLoading(true);
+    setAutoSubmitting(false); // 重置自动提交状态
     setCurrentStep(1);
     
     try {
       // 创建旅行计划
-      const response = await fetch('/api/v1/travel-plans/', {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLANS), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: REQUEST_CONFIG.headers,
         body: JSON.stringify({
-          ...values,
-          user_id: 1, // 临时用户ID
-          duration_days: values.dateRange[1].diff(values.dateRange[0], 'day') + 1
+          title: `${values.destination} 旅行计划`, // 自动生成标题
+          destination: values.destination,
+          start_date: values.dateRange[0].format('YYYY-MM-DD HH:mm:ss'),
+          end_date: values.dateRange[1].format('YYYY-MM-DD HH:mm:ss'),
+          duration_days: values.dateRange[1].diff(values.dateRange[0], 'day') + 1,
+          budget: values.budget,
+          preferences: { interests: values.preferences },
+          requirements: { special_requirements: values.requirements },
+          user_id: 1 // 临时用户ID
         }),
       });
 
@@ -94,6 +128,12 @@ const TravelPlanPage: React.FC = () => {
       }
 
       const plan = await response.json();
+      console.log('创建计划响应:', plan);
+      
+      if (!plan || !plan.id) {
+        throw new Error('创建计划响应格式错误');
+      }
+      
       setPlanId(plan.id);
       
       // 开始生成方案
@@ -108,20 +148,19 @@ const TravelPlanPage: React.FC = () => {
   };
 
   const generatePlans = async (planId: number, preferences: TravelRequest) => {
+    console.log('开始生成方案:', { planId, preferences });
     setCurrentStep(2);
     setGenerationStatus('generating');
     
     try {
       // 启动方案生成
-      const response = await fetch(`/api/v1/travel-plans/${planId}/generate`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_GENERATE(planId)), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: REQUEST_CONFIG.headers,
         body: JSON.stringify({
           preferences: {
             budget_priority: preferences.budget < 3000 ? 'low' : 'medium',
-            activity_preference: preferences.preferences[0] || 'culture'
+            activity_preference: (preferences.preferences && preferences.preferences[0]) || 'culture'
           },
           requirements: preferences.requirements,
           num_plans: 3
@@ -144,7 +183,7 @@ const TravelPlanPage: React.FC = () => {
   const pollGenerationStatus = async (planId: number) => {
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/v1/travel-plans/${planId}/status`);
+        const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_STATUS(planId)));
         const status = await response.json();
         
         setProgress(Math.min(progress + 10, 90));
@@ -240,6 +279,18 @@ const TravelPlanPage: React.FC = () => {
 
       {/* 状态提示 */}
       {getStatusAlert()}
+      
+      {/* 自动提交提示 */}
+      {autoSubmitting && (
+        <Card style={{ marginBottom: '24px' }}>
+          <Alert
+            message="正在自动处理您的旅行需求"
+            description="检测到您从首页跳转，正在自动提交表单..."
+            type="info"
+            showIcon
+          />
+        </Card>
+      )}
 
       {/* 进度条 */}
       {generationStatus === 'generating' && (

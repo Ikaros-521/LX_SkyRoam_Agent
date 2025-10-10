@@ -29,6 +29,7 @@ import {
   HeartOutlined
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
+import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
 
 const { Title, Paragraph, Text } = Typography;
 const { TabPane } = Tabs;
@@ -58,7 +59,7 @@ const PlanDetailPage: React.FC = () => {
 
   const fetchPlanDetail = async () => {
     try {
-      const response = await fetch(`/api/v1/travel-plans/${id}`);
+      const response = await fetch(buildApiUrl(`/travel-plans/${id}`));
       if (!response.ok) {
         throw new Error('获取计划详情失败');
       }
@@ -73,7 +74,7 @@ const PlanDetailPage: React.FC = () => {
 
   const handleSelectPlan = async (planIndex: number) => {
     try {
-      const response = await fetch(`/api/v1/travel-plans/${id}/select-plan`, {
+      const response = await fetch(buildApiUrl(`/travel-plans/${id}/select-plan`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -92,7 +93,7 @@ const PlanDetailPage: React.FC = () => {
 
   const handleExport = async (format: string) => {
     try {
-      const response = await fetch(`/api/v1/travel-plans/${id}/export?format=${format}`);
+      const response = await fetch(buildApiUrl(`/travel-plans/${id}/export?format=${format}`));
       if (response.ok) {
         // 处理导出逻辑
         console.log(`导出为 ${format} 格式`);

@@ -9,13 +9,15 @@
 
 ## ⚡ 快速启动 (推荐)
 
-### 1. 克隆项目
+### 方式一：Docker Compose（推荐）
+
+#### 1. 克隆项目
 ```bash
 git clone <your-repository-url>
 cd LX_SkyRoam_Agent
 ```
 
-### 2. 配置环境
+#### 2. 配置环境
 ```bash
 # 复制环境配置文件
 cp env.example .env
@@ -26,7 +28,50 @@ cp env.example .env
 # - 其他API密钥（可选）
 ```
 
-### 3. 一键启动
+#### 3. 一键启动
+```bash
+# Windows
+start.bat
+
+# Linux/Mac
+chmod +x start.sh
+./start.sh
+```
+
+### 方式二：本地开发环境
+
+#### 1. 环境要求
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL 15+
+- Redis 7+
+
+#### 2. 启动服务
+```bash
+# Windows
+start-dev.bat
+
+# Linux/Mac
+chmod +x start-dev.sh
+./start-dev.sh
+```
+
+#### 3. 手动启动
+```bash
+# 启动后端
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+# 启动前端（新终端）
+cd frontend
+npm install
+npm start
+```
+
+### 4. 访问应用
 ```bash
 # Linux/Mac
 ./start.sh
@@ -37,8 +82,8 @@ start.bat
 
 ### 4. 访问应用
 - **前端应用**: http://localhost:3000
-- **后端API**: http://localhost:8000
-- **API文档**: http://localhost:8000/docs
+- **后端API**: http://localhost:8001
+- **API文档**: http://localhost:8001/docs
 - **Celery监控**: http://localhost:5555
 
 ## 🔧 手动启动 (开发模式)
@@ -167,6 +212,12 @@ docker-compose logs postgres
 # OpenAI API密钥 (必需)
 OPENAI_API_KEY=your-openai-api-key-here
 
+# OpenAI API地址 (可选，支持自定义地址)
+OPENAI_API_BASE=https://api.openai.com/v1
+# 示例自定义地址：
+# OPENAI_API_BASE=https://your-proxy.com/v1
+# OPENAI_API_BASE=https://api.openai-proxy.com/v1
+
 # 数据库配置
 DATABASE_URL=postgresql://user:password@localhost:5432/skyroam
 REDIS_URL=redis://localhost:6379/0
@@ -186,10 +237,16 @@ MAP_API_KEY=your-google-maps-api-key
 ### 健康检查
 ```bash
 # 检查所有服务状态
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 
 # 检查API文档
-curl http://localhost:8000/docs
+curl http://localhost:8001/docs
+
+# 检查OpenAI配置
+curl http://localhost:8001/api/v1/openai/config
+
+# 测试OpenAI连接
+curl -X POST http://localhost:8001/api/v1/openai/test
 ```
 
 ### 日志查看

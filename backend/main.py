@@ -90,10 +90,17 @@ async def health_check():
 
 
 if __name__ == "__main__":
+    # 通过命令行参数传递host和port
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8001)
+    args = parser.parse_args()
+
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=args.host,
+        port=args.port,
         reload=settings.DEBUG,
         log_level="info"
     )

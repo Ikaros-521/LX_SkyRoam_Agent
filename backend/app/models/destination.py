@@ -2,7 +2,7 @@
 目的地相关模型
 """
 
-from sqlalchemy import Column, String, Text, Float, Integer, JSON, Boolean
+from sqlalchemy import Column, String, Text, Float, Integer, JSON, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 

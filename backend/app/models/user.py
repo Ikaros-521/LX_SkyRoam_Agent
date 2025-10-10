@@ -32,4 +32,9 @@ class User(BaseModel):
     travel_plans = relationship("TravelPlan", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<User(username={self.username}, email={self.email})>"
+        try:
+            # 安全地获取属性，避免触发懒加载
+            obj_id = getattr(self, 'id', 'N/A')
+            return f"<User(id={obj_id})>"
+        except Exception:
+            return f"<User(instance)>"

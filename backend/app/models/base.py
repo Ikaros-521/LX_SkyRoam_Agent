@@ -27,4 +27,9 @@ class BaseModel(Base):
         }
     
     def __repr__(self):
-        return f"<{self.__class__.__name__}(id={self.id})>"
+        try:
+            # 安全地获取属性，避免触发懒加载
+            obj_id = getattr(self, 'id', 'N/A')
+            return f"<{self.__class__.__name__}(id={obj_id})>"
+        except Exception:
+            return f"<{self.__class__.__name__}(instance)>"

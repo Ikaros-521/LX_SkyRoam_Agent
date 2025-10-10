@@ -21,7 +21,10 @@ class DataCollector:
     def __init__(self):
         self.mcp_client = MCPClient()
         self.web_scraper = WebScraper()
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_client = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
     
     async def collect_flight_data(
         self, 

@@ -8,7 +8,7 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 
 from app.models.travel_plan import TravelPlan, TravelPlanItem
-from app.schemas.travel_plan import TravelPlanCreate, TravelPlanUpdate
+from app.schemas.travel_plan import TravelPlanCreate, TravelPlanUpdate, TravelPlanResponse
 
 
 class TravelPlanService:
@@ -17,13 +17,15 @@ class TravelPlanService:
     def __init__(self, db: AsyncSession):
         self.db = db
     
-    async def create_travel_plan(self, plan_data: TravelPlanCreate) -> TravelPlan:
+    async def create_travel_plan(self, plan_data: TravelPlanCreate) -> TravelPlanResponse:
         """创建旅行计划"""
         plan = TravelPlan(**plan_data.dict())
         self.db.add(plan)
         await self.db.commit()
         await self.db.refresh(plan)
-        return plan
+        
+        # 手动构建响应，避免懒加载问题
+        return TravelPlanResponse.from_orm(plan)
     
     async def get_travel_plans(
         self, 

@@ -36,7 +36,7 @@
     "postcss": "^8.4.32"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "set \"REACT_APP_API_BASE_URL=http://localhost:8001/api/v1\" && react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",

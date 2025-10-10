@@ -3,7 +3,7 @@ API v1 路由汇总
 """
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import travel_plans, destinations, users, agents
+from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai
 
 api_router = APIRouter()
 
@@ -30,4 +30,10 @@ api_router.include_router(
     agents.router, 
     prefix="/agents", 
     tags=["agents"]
+)
+
+api_router.include_router(
+    openai.router, 
+    prefix="/openai", 
+    tags=["openai"]
 )

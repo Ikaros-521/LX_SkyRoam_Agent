@@ -20,6 +20,7 @@ import {
   EditOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -51,7 +52,7 @@ const HistoryPage: React.FC = () => {
     try {
       setLoading(true);
       const response = await fetch(
-        `/api/v1/travel-plans/?skip=${(currentPage - 1) * pageSize}&limit=${pageSize}`
+        buildApiUrl(`/travel-plans/?skip=${(currentPage - 1) * pageSize}&limit=${pageSize}`)
       );
       
       if (!response.ok) {
@@ -78,7 +79,7 @@ const HistoryPage: React.FC = () => {
 
   const handleDeletePlan = async (planId: number) => {
     try {
-      const response = await fetch(`/api/v1/travel-plans/${planId}`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_DETAIL(planId)), {
         method: 'DELETE',
       });
 
