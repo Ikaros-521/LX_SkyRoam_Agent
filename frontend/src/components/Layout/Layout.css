@@ -1,0 +1,19 @@
+/* Layout组件样式 */
+
+/* 移动端菜单按钮 */
+@media (max-width: 768px) {
+  .mobile-menu-button {
+    display: block !important;
+  }
+  
+  .ant-layout-header .ant-menu {
+    display: none !important;
+  }
+}
+
+/* 桌面端隐藏移动端按钮 */
+@media (min-width: 769px) {
+  .mobile-menu-button {
+    display: none !important;
+  }
+}

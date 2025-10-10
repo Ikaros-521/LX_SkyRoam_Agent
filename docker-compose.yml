@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15
+    container_name: skyroam-postgres
+    environment:
+      POSTGRES_DB: skyroam
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - skyroam-network
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: skyroam-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - skyroam-network
+
+  # 后端 API 服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/skyroam
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-celery-worker
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/skyroam
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    command: celery -A app.core.celery worker --loglevel=info
+
+  # Celery Beat (定时任务)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-celery-beat
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/skyroam
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    command: celery -A app.core.celery beat --loglevel=info
+
+  # Flower (Celery 监控)
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-flower
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+    networks:
+      - skyroam-network
+    command: celery -A app.core.celery flower --port=5555
+
+  # 前端应用
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: skyroam-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - skyroam-network
+    command: npm start
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  skyroam-network:
+    driver: bridge
