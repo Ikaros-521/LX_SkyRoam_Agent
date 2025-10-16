@@ -120,6 +120,22 @@ class AmapMCPHTTPServer:
                     },
                     'required': ['city']
                 }
+            },
+            {
+                'name': 'place_around',
+                'description': '周边搜索 - 基于中心点坐标搜索周边POI',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {
+                        'location': {'type': 'string', 'description': '中心点坐标 (经度,纬度)'},
+                        'keywords': {'type': 'string', 'description': '查询关键字'},
+                        'types': {'type': 'string', 'description': 'POI类型，如050000(餐饮服务)、110000(风景名胜)'},
+                        'radius': {'type': 'number', 'description': '查询半径，单位米，默认5000'},
+                        'offset': {'type': 'number', 'description': '每页记录数据，默认20'},
+                        'page': {'type': 'number', 'description': '当前页数，默认1'}
+                    },
+                    'required': ['location']
+                }
             }
         ]
         return web.json_response({'tools': tools})
@@ -153,6 +169,8 @@ class AmapMCPHTTPServer:
                 result = await self.reverse_geocode(params)
             elif method == 'weather_query':
                 result = await self.get_weather(params)
+            elif method == 'place_around':
+                result = await self.search_places_around(params)
             else:
                 return web.json_response({
                     'jsonrpc': '2.0',
@@ -169,10 +187,12 @@ class AmapMCPHTTPServer:
         except Exception as e:
             logger.error(f'MCP 请求处理失败: {e}')
             # 安全获取request_id，避免data变量未绑定的问题
+            request_id = None
             try:
-                request_id = data.get('id') if 'data' in locals() and data else None
+                if 'data' in locals() and data:
+                    request_id = data.get('id')
             except:
-                request_id = None
+                pass
             return web.json_response({
                 'jsonrpc': '2.0',
                 'id': request_id,
@@ -289,6 +309,7 @@ class AmapMCPHTTPServer:
             'driving': f'{base_url}/direction/driving',
             'walking': f'{base_url}/direction/walking',
             'place_search': f'{base_url}/place/text',
+            'place_around': f'{base_url}/place/around',
             'geocode': f'{base_url}/geocode/geo',
             'reverse_geocode': f'{base_url}/geocode/regeo',
             'weather': f'{base_url}/weather/weatherInfo'
@@ -446,6 +467,57 @@ class AmapMCPHTTPServer:
         except Exception as e:
             logger.error(f'调用高德地图天气API失败: {e}')
             raise Exception(f'无法获取天气信息: {e}')
+    
+    async def search_places_around(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """周边搜索 - 基于中心点坐标搜索周边POI"""
+        location = params.get('location')
+        keywords = params.get('keywords', '')
+        types = params.get('types', '')
+        radius = params.get('radius', 5000)
+        offset = params.get('offset', 20)
+        page = params.get('page', 1)
+        
+        if not location:
+            raise ValueError('缺少中心点坐标参数')
+        
+        # 如果没有指定keywords和types，默认搜索餐饮、购物服务、生活服务、住宿服务
+        if not keywords and not types:
+            types = '050000|060000|070000|100000'
+        
+        try:
+            logger.info(f'周边搜索，中心点: {location}, 关键词: {keywords}, 类型: {types}, 半径: {radius}米')
+            
+            # 调用真实的高德地图周边搜索API
+            result = await self.call_amap_api('place_around', {
+                'location': location,
+                'keywords': keywords,
+                'types': types,
+                'radius': radius,
+                'offset': offset,
+                'page': page
+            })
+            
+            # 关键日志：周边搜索返回的核心信息
+            try:
+                pois = result.get('pois', [])
+                logger.info(
+                    f"[AMap PlaceAround] location={location} keywords={keywords} types={types} "
+                    f"radius={radius} pois={len(pois)} page={page}"
+                )
+                if pois:
+                    # 记录前几个POI的基本信息
+                    for i, poi in enumerate(pois[:3]):
+                        logger.info(
+                            f"[AMap POI {i+1}] name={poi.get('name')} type={poi.get('type')} "
+                            f"address={poi.get('address')} distance={poi.get('distance')}m"
+                        )
+            except Exception as log_e:
+                logger.warning(f"周边搜索关键日志生成失败: {log_e}")
+            
+            return result
+        except Exception as e:
+            logger.error(f'调用高德地图周边搜索API失败: {e}')
+            raise Exception(f'无法进行周边搜索: {e}')
     
     async def start(self):
         """启动服务器"""

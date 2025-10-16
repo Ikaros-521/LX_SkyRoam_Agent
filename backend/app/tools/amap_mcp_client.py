@@ -222,6 +222,98 @@ class AmapMCPClient:
         else:
             return 30  # 长距离
     
+    async def search_places_around(
+        self,
+        location: str,
+        keywords: str = "",
+        types: str = "",
+        radius: int = 5000,
+        offset: int = 20,
+        page: int = 1
+    ) -> List[Dict[str, Any]]:
+        """周边搜索地点"""
+        try:
+            if not self.api_key:
+                logger.warning("高德地图API密钥未配置")
+                return []
+            
+            # 构建 MCP 请求
+            mcp_request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "place_around",
+                "params": {
+                    "location": location,
+                    "keywords": keywords,
+                    "types": types,
+                    "radius": radius,
+                    "offset": offset,
+                    "page": page
+                }
+            }
+            
+            if self.mode == "sse":
+                return await self._search_places_around_sse(mcp_request)
+            else:
+                return await self._search_places_around_http(mcp_request)
+                
+        except Exception as e:
+            logger.error(f"高德地图周边搜索失败: {e}")
+            return []
+    
+    async def _search_places_around_http(self, mcp_request: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """使用 HTTP 方式进行周边搜索"""
+        try:
+            response = await self.http_client.post(
+                self.base_url,
+                json=mcp_request,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            if result.get("error"):
+                logger.error(f"高德地图周边搜索MCP错误: {result['error']}")
+                return []
+            
+            return self._parse_places_response(result.get("result", {}))
+            
+        except Exception as e:
+            logger.error(f"高德地图HTTP周边搜索失败: {e}")
+            return []
+    
+    async def _search_places_around_sse(self, mcp_request: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """使用 SSE 方式进行周边搜索"""
+        try:
+            async with self.http_client.stream(
+                "POST",
+                self.base_url,
+                json=mcp_request,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "text/event-stream"
+                }
+            ) as response:
+                response.raise_for_status()
+                
+                result_data = {}
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+                            if data.get("id") == 1:
+                                result_data = data.get("result", {})
+                                break
+                        except json.JSONDecodeError:
+                            continue
+                
+                return self._parse_places_response(result_data)
+                
+        except Exception as e:
+            logger.error(f"高德地图SSE周边搜索失败: {e}")
+            return []
+
     async def search_places(
         self,
         query: str,
@@ -316,18 +408,61 @@ class AmapMCPClient:
             places = []
             
             for poi in pois[:10]:  # 取前10个地点
+                # 提取基本信息
+                location_str = poi.get("location", "")
+                coordinates = {}
+                if location_str and "," in location_str:
+                    lng, lat = location_str.split(",")
+                    coordinates = {
+                        "lng": float(lng.strip()),
+                        "lat": float(lat.strip())
+                    }
+                
+                # 提取商业扩展信息（评分、价格等）
+                biz_ext = poi.get("biz_ext", {})
+                rating = 0.0
+                cost = ""
+                if biz_ext:
+                    rating = float(biz_ext.get("rating", 0))
+                    cost = biz_ext.get("cost", "")
+                
+                # 提取图片信息
+                photos = []
+                photo_list = poi.get("photos", [])
+                if photo_list:
+                    for photo in photo_list[:3]:  # 取前3张图片
+                        if isinstance(photo, dict) and photo.get("url"):
+                            photos.append({
+                                "url": photo.get("url", ""),
+                                "title": photo.get("title", "")
+                            })
+                
+                # 提取标签
+                tags = []
+                tag_str = poi.get("tag", "")
+                if tag_str:
+                    tags = [tag.strip() for tag in tag_str.split(",") if tag.strip()]
+                
                 place_item = {
                     "id": f"amap_place_{poi.get('id', '')}",
                     "name": poi.get("name", ""),
                     "category": poi.get("type", ""),
                     "description": poi.get("address", ""),
                     "address": poi.get("address", ""),
-                    "rating": float(poi.get("rating", 0)),
-                    "price": 0,  # 高德地图不提供价格信息
-                    "opening_hours": poi.get("tel", ""),
-                    "visit_duration": "1-2小时",
-                    "tags": poi.get("tag", "").split(";") if poi.get("tag") else [],
+                    "rating": rating,
+                    "cost": cost,  # 人均消费
+                    "price_range": self._get_price_range(cost),  # 价格区间
+                    "coordinates": coordinates,
+                    "location": location_str,
                     "phone": poi.get("tel", ""),
+                    "business_area": poi.get("business_area", ""),
+                    "cityname": poi.get("cityname", ""),
+                    "adname": poi.get("adname", ""),  # 区域名称
+                    "tags": tags,
+                    "photos": photos,
+                    "typecode": poi.get("typecode", ""),
+                    "distance": poi.get("distance", ""),
+                    "visit_duration": "1-2小时",
                     "website": "",
                     "accessibility": "良好",
                     "source": "高德地图MCP"
@@ -339,6 +474,30 @@ class AmapMCPClient:
         except Exception as e:
             logger.error(f"解析高德地图地点响应失败: {e}")
             return []
+    
+    def _get_price_range(self, cost: str) -> str:
+        """根据人均消费获取价格区间"""
+        if not cost:
+            return "$$"
+        
+        try:
+            # 提取数字部分
+            import re
+            cost_match = re.search(r'(\d+)', cost)
+            if cost_match:
+                cost_value = int(cost_match.group(1))
+                if cost_value < 30:
+                    return "$"
+                elif cost_value < 80:
+                    return "$$"
+                elif cost_value < 150:
+                    return "$$$"
+                else:
+                    return "$$$$"
+        except:
+            pass
+        
+        return "$$"
     
     def _get_place_type(self, category: str) -> str:
         """获取高德地图地点类型"""

@@ -156,7 +156,7 @@ class DataCollector:
                                 "opening_hours": place.get("detail_info", {}).get("open_time", "全天开放"),
                                 "source": "百度地图API"
                             }
-                        attraction_data.append(attraction_item)
+                            attraction_data.append(attraction_item)
                 
                     # 搜索博物馆
                     museum_result = await map_search_places(
@@ -383,35 +383,59 @@ class DataCollector:
                 try:
                     logger.info(f"使用高德地图周边搜索收集餐厅数据: {destination}")
                     
-                    # 搜索餐厅 - 使用智能城市名解析
+                    # 首先获取目的地的坐标
                     city_name = await self.city_resolver.resolve_city(destination)
-                    amap_restaurants = await self.amap_client.search_places(
-                        query="餐厅",
-                        city=city_name,
-                        category="餐厅"
-                    )
                     
-                    for amap_restaurant in amap_restaurants[:10]:  # 取前10个餐厅
-                        restaurant_item = {
-                            "name": amap_restaurant.get("name", "餐厅"),
-                            "cuisine": amap_restaurant.get("category", "中餐"),
-                            "rating": amap_restaurant.get("rating", 4.0),
-                            "price_range": "$$",
-                            "address": amap_restaurant.get("address", ""),
-                            "coordinates": {
-                                "lat": amap_restaurant.get("coordinates", {}).get("lat"),
-                                "lng": amap_restaurant.get("coordinates", {}).get("lng")
-                            },
-                            "opening_hours": amap_restaurant.get("opening_hours", "10:00-22:00"),
-                            "specialties": amap_restaurant.get("tags", ["特色菜"]),
-                            "source": "高德地图API"
-                        }
-                        restaurant_data.append(restaurant_item)
+                    # 使用高德地图地理编码获取中心点坐标
+                    from app.tools.baidu_maps_integration import map_geocode
+                    geocode_result = await map_geocode(destination)
                     
-                    logger.info(f"从高德地图API获取到 {len(amap_restaurants)} 条餐厅数据")
+                    center_location = None
+                    if geocode_result.get("status") == 0:
+                        location_info = geocode_result.get("result", {}).get("location", {})
+                        if location_info:
+                            # 百度地图坐标转高德地图坐标格式 (经度,纬度)
+                            center_location = f"{location_info.get('lng')},{location_info.get('lat')}"
+                    
+                    if center_location:
+                        # 使用周边搜索获取餐厅数据
+                        amap_restaurants = await self.amap_client.search_places_around(
+                            location=center_location,
+                            keywords="餐厅",
+                            types="050000",  # 餐饮服务
+                            radius=10000,    # 10公里半径
+                            offset=20
+                        )
+                        
+                        for amap_restaurant in amap_restaurants[:10]:  # 取前10个餐厅
+                            restaurant_item = {
+                                "name": amap_restaurant.get("name", "餐厅"),
+                                "cuisine": amap_restaurant.get("category", "中餐"),
+                                "rating": amap_restaurant.get("rating", 4.0),
+                                "price_range": amap_restaurant.get("price_range", "$$"),
+                                "cost": amap_restaurant.get("cost", ""),  # 人均消费
+                                "address": amap_restaurant.get("address", ""),
+                                "coordinates": amap_restaurant.get("coordinates", {}),
+                                "location": amap_restaurant.get("location", ""),
+                                "phone": amap_restaurant.get("phone", ""),
+                                "business_area": amap_restaurant.get("business_area", ""),
+                                "cityname": amap_restaurant.get("cityname", ""),
+                                "adname": amap_restaurant.get("adname", ""),
+                                "opening_hours": "10:00-22:00",  # 高德地图不提供营业时间
+                                "specialties": amap_restaurant.get("tags", ["特色菜"]),
+                                "photos": amap_restaurant.get("photos", []),  # 餐厅图片
+                                "typecode": amap_restaurant.get("typecode", ""),
+                                "distance": amap_restaurant.get("distance", ""),
+                                "source": "高德地图周边搜索"
+                            }
+                            restaurant_data.append(restaurant_item)
+                        
+                        logger.info(f"从高德地图周边搜索获取到 {len(amap_restaurants)} 条餐厅数据")
+                    else:
+                        logger.warning(f"无法获取 {destination} 的坐标，跳过高德地图周边搜索")
                     
                 except Exception as e:
-                    logger.warning(f"高德地图餐厅API调用失败: {e}")
+                    logger.warning(f"高德地图餐厅周边搜索调用失败: {e}")
             
             # 如果数据仍然不足，使用MCP工具补充
             if len(restaurant_data) < 10:
@@ -881,35 +905,53 @@ class DataCollector:
         destination: str, 
         attraction_data: List[Dict[str, Any]]
     ):
-        """使用高德地图MCP服务收集景点数据"""
+        """使用高德地图周边搜索收集景点数据"""
         try:
-            # 使用智能城市名解析
+            # 首先获取目的地的坐标
             city_name = await self.city_resolver.resolve_city(destination)
             
-            # 搜索景点
-            attractions = await self.amap_client.search_places(
-                query="景点",
-                city=city_name,
-                category="景点"
-            )
+            # 使用百度地图地理编码获取中心点坐标
+            from app.tools.baidu_maps_integration import map_geocode
+            geocode_result = await map_geocode(destination)
             
-            if attractions:
-                attraction_data.extend(attractions)
-                logger.info(f"从高德地图MCP获取到 {len(attractions)} 条景点数据")
+            center_location = None
+            if geocode_result.get("status") == 0:
+                location_info = geocode_result.get("result", {}).get("location", {})
+                if location_info:
+                    # 百度地图坐标转高德地图坐标格式 (经度,纬度)
+                    center_location = f"{location_info.get('lng')},{location_info.get('lat')}"
             
-            # 搜索博物馆
-            museums = await self.amap_client.search_places(
-                query="博物馆",
-                city=city_name,
-                category="景点"
-            )
-            
-            if museums:
-                attraction_data.extend(museums)
-                logger.info(f"从高德地图MCP获取到 {len(museums)} 条博物馆数据")
+            if center_location:
+                # 使用周边搜索获取景点数据
+                attractions = await self.amap_client.search_places_around(
+                    location=center_location,
+                    keywords="景点",
+                    types="110000",  # 风景名胜
+                    radius=20000,    # 20公里半径
+                    offset=20
+                )
+                
+                if attractions:
+                    attraction_data.extend(attractions)
+                    logger.info(f"从高德地图周边搜索获取到 {len(attractions)} 条景点数据")
+                
+                # 搜索博物馆
+                museums = await self.amap_client.search_places_around(
+                    location=center_location,
+                    keywords="博物馆",
+                    types="140700",  # 科教文化服务
+                    radius=20000,    # 20公里半径
+                    offset=10
+                )
+                
+                if museums:
+                    attraction_data.extend(museums)
+                    logger.info(f"从高德地图周边搜索获取到 {len(museums)} 条博物馆数据")
+            else:
+                logger.warning(f"无法获取 {destination} 的坐标，跳过高德地图周边搜索")
                 
         except Exception as e:
-            logger.warning(f"高德地图景点数据收集失败: {e}")
+            logger.warning(f"高德地图景点周边搜索失败: {e}")
 
 
     async def close(self):
