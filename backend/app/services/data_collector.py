@@ -45,35 +45,71 @@ class DataCollector:
         start_date: datetime, 
         end_date: datetime
     ) -> List[Dict[str, Any]]:
-        """收集航班数据"""
+        """收集航班数据 - 使用 Amadeus API"""
         try:
             cache_key_str = cache_key("flights", f"{departure}-{destination}", start_date.date(), end_date.date())
             
             # 检查缓存
             cached_data = await get_cache(cache_key_str)
             if cached_data:
-                logger.info(f"使用缓存的航班数据: {destination}")
+                logger.info(f"使用缓存的航班数据: {departure} -> {destination}")
                 return cached_data
             
-            # 使用MCP工具收集航班信息
+            logger.info(f"开始收集航班数据: {departure} -> {destination}, 出发日期: {start_date.date()}")
+            
+            # 使用 Amadeus API 收集航班信息
             flight_data = await self.mcp_client.get_flights(
+                origin=departure,
                 destination=destination,
                 departure_date=start_date.date(),
-                return_date=end_date.date(),
-                origin=departure
+                return_date=end_date.date()
             )
             
-            # 已移除爬虫功能，只使用MCP数据
+            # 验证和处理航班数据
+            if flight_data:
+                # 确保每个航班都有必要的字段
+                validated_flights = []
+                for flight in flight_data:
+                    if self._validate_flight_data(flight):
+                        # 添加额外的元数据
+                        flight['collected_at'] = datetime.utcnow().isoformat()
+                        flight['route'] = f"{departure} -> {destination}"
+                        validated_flights.append(flight)
+                    else:
+                        logger.warning(f"航班数据验证失败: {flight.get('id', 'unknown')}")
+                
+                flight_data = validated_flights
+                logger.info(f"成功收集并验证 {len(flight_data)} 条航班数据")
+            else:
+                logger.warning(f"未获取到航班数据: {departure} -> {destination}")
+                flight_data = []
             
-            # 缓存数据
-            await set_cache(cache_key_str, flight_data, ttl=300)  # 5分钟缓存
+            # 缓存数据 (5分钟缓存，航班数据变化较快)
+            await set_cache(cache_key_str, flight_data, ttl=300)
             
-            logger.info(f"收集到 {len(flight_data)} 条航班数据")
             return flight_data
             
         except Exception as e:
-            logger.error(f"收集航班数据失败: {e}")
+            logger.error(f"收集航班数据失败: {departure} -> {destination}, 错误: {e}")
             return []
+    
+    def _validate_flight_data(self, flight: Dict[str, Any]) -> bool:
+        """验证航班数据的完整性"""
+        required_fields = ['id', 'airline', 'flight_number', 'departure_time', 'arrival_time', 'price']
+        
+        for field in required_fields:
+            if field not in flight or flight[field] is None:
+                logger.warning(f"航班数据缺少必要字段: {field}")
+                return False
+        
+        # 验证价格是否为有效数字
+        try:
+            float(flight['price'])
+        except (ValueError, TypeError):
+            logger.warning(f"航班价格格式无效: {flight.get('price')}")
+            return False
+        
+        return True
     
     async def collect_hotel_data(
         self, 

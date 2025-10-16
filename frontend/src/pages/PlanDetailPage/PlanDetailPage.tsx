@@ -792,12 +792,106 @@ const PlanDetailPage: React.FC = () => {
               <Col xs={24} md={12}>
                 <Card title="航班信息" size="small">
                   {currentPlan.flight ? (
-                    <Space direction="vertical" size="small">
-                      <Text strong>{currentPlan.flight.airline}</Text>
-                      <Text>{currentPlan.flight.flight_number}</Text>
-                      <Text>出发: {currentPlan.flight.departure_time}</Text>
-                      <Text>到达: {currentPlan.flight.arrival_time}</Text>
-                      <Text>价格: ¥{currentPlan.flight.price}</Text>
+                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                      {/* 航班基本信息 */}
+                      <Row justify="space-between" align="middle">
+                        <Col>
+                          <Text strong style={{ fontSize: '16px' }}>
+                            {currentPlan.flight.flight_number || 'N/A'}
+                          </Text>
+                        </Col>
+                        <Col>
+                          <Tag color="blue">
+                            {currentPlan.flight.cabin_class || '经济舱'}
+                          </Tag>
+                        </Col>
+                      </Row>
+                      
+                      {/* 航空公司 */}
+                      <Row>
+                        <Text>
+                          <strong>航空公司:</strong> {currentPlan.flight.airline_name || currentPlan.flight.airline || 'N/A'}
+                        </Text>
+                      </Row>
+                      
+                      {/* 时间信息 */}
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Space direction="vertical" size={2}>
+                            <Text type="secondary" style={{ fontSize: '12px' }}>出发时间</Text>
+                            <Text strong>
+                              {currentPlan.flight.departure_time ? 
+                                (currentPlan.flight.departure_time.includes('T') ? 
+                                  currentPlan.flight.departure_time.split('T')[1].substring(0, 5) : 
+                                  currentPlan.flight.departure_time) : 'N/A'}
+                            </Text>
+                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                              {currentPlan.flight.origin || 'N/A'}
+                            </Text>
+                          </Space>
+                        </Col>
+                        <Col span={12}>
+                          <Space direction="vertical" size={2}>
+                            <Text type="secondary" style={{ fontSize: '12px' }}>到达时间</Text>
+                            <Text strong>
+                              {currentPlan.flight.arrival_time ? 
+                                (currentPlan.flight.arrival_time.includes('T') ? 
+                                  currentPlan.flight.arrival_time.split('T')[1].substring(0, 5) : 
+                                  currentPlan.flight.arrival_time) : 'N/A'}
+                            </Text>
+                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                              {currentPlan.flight.destination || 'N/A'}
+                            </Text>
+                          </Space>
+                        </Col>
+                      </Row>
+                      
+                      {/* 飞行时长和中转 */}
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Text>
+                            <strong>飞行时长:</strong> {currentPlan.flight.duration || 'N/A'}
+                          </Text>
+                        </Col>
+                        <Col span={12}>
+                          <Text>
+                            <strong>中转:</strong> {
+                              currentPlan.flight.stops === 0 ? '直飞' : 
+                              currentPlan.flight.stops ? `${currentPlan.flight.stops}次中转` : 'N/A'
+                            }
+                          </Text>
+                        </Col>
+                      </Row>
+                      
+                      {/* 价格信息 */}
+                      <Row justify="space-between" align="middle" style={{ 
+                        padding: '8px 12px', 
+                        backgroundColor: '#f6ffed', 
+                        borderRadius: '6px',
+                        border: '1px solid #b7eb8f'
+                      }}>
+                        <Col>
+                          <Text strong style={{ color: '#52c41a', fontSize: '16px' }}>
+                            ¥{currentPlan.flight.price_cny || currentPlan.flight.price || 'N/A'}
+                          </Text>
+                        </Col>
+                        <Col>
+                          {currentPlan.flight.currency && currentPlan.flight.currency !== 'CNY' && (
+                            <Text type="secondary" style={{ fontSize: '12px' }}>
+                              原价: {currentPlan.flight.price} {currentPlan.flight.currency}
+                            </Text>
+                          )}
+                        </Col>
+                      </Row>
+                      
+                      {/* 行李额度 */}
+                      {currentPlan.flight.baggage_allowance && (
+                        <Row>
+                          <Text style={{ fontSize: '12px' }}>
+                            <strong>行李额度:</strong> {currentPlan.flight.baggage_allowance}
+                          </Text>
+                        </Row>
+                      )}
                     </Space>
                   ) : (
                     <Text type="secondary">暂无航班信息</Text>

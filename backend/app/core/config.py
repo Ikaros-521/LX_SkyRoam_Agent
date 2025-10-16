@@ -10,6 +10,11 @@ import os
 class Settings(BaseSettings):
     """应用配置"""
     
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = True
+    
     # 基础配置
     APP_NAME: str = os.getenv("APP_NAME", "LX SkyRoam Agent")
     VERSION: str = os.getenv("VERSION", "1.0.0")
@@ -43,7 +48,13 @@ class Settings(BaseSettings):
     
     # 第三方API配置
     WEATHER_API_KEY: str = os.getenv("WEATHER_API_KEY", "")  # OpenWeatherMap
-    FLIGHT_API_KEY: str = os.getenv("FLIGHT_API_KEY", "")   # Amadeus
+    
+    # Amadeus API配置
+    AMADEUS_CLIENT_ID: str = os.getenv("AMADEUS_CLIENT_ID", "")
+    AMADEUS_CLIENT_SECRET: str = os.getenv("AMADEUS_CLIENT_SECRET", "")
+    AMADEUS_API_BASE: str = os.getenv("AMADEUS_API_BASE", "https://test.api.amadeus.com")
+    AMADEUS_TOKEN_URL: str = os.getenv("AMADEUS_TOKEN_URL", "https://test.api.amadeus.com/v1/security/oauth2/token")
+    
     HOTEL_API_KEY: str = os.getenv("HOTEL_API_KEY", "")    # Booking.com
     MAP_API_KEY: str = os.getenv("MAP_API_KEY", "")      # Google Maps
     
@@ -114,12 +125,6 @@ class Settings(BaseSettings):
         "safety": 0.15,
         "popularity": 0.1
     }
-
-class Config:
-    env_file = ".env"
-    env_file_encoding = "utf-8"
-    case_sensitive = True
-
 
 # 创建全局配置实例
 settings = Settings()

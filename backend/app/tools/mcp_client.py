@@ -18,8 +18,18 @@ class MCPClient:
     """MCP客户端"""
     
     def __init__(self):
-        self.http_client = httpx.AsyncClient(timeout=settings.MCP_TIMEOUT, proxies={})
+        # 配置HTTP客户端，增加超时时间和重试机制
+        timeout = httpx.Timeout(60.0, connect=30.0)
+        self.http_client = httpx.AsyncClient(
+            timeout=timeout,
+            verify=False,  # 暂时禁用SSL验证
+            follow_redirects=True,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            proxies={}  # 禁用代理
+        )
         self.base_url = "https://api.example.com"  # 示例API地址
+        self._amadeus_token = None
+        self._token_expires_at = None
     
     async def get_flights(
         self, 
@@ -30,13 +40,19 @@ class MCPClient:
     ) -> List[Dict[str, Any]]:
         """获取航班信息"""
         try:
-            # 使用Amadeus API获取真实航班数据
-            if not settings.FLIGHT_API_KEY:
-                logger.warning("航班API密钥未配置，返回空列表")
+            # 检查Amadeus API配置
+            if not settings.AMADEUS_CLIENT_ID or not settings.AMADEUS_CLIENT_SECRET:
+                logger.warning("Amadeus API凭据未配置，返回空列表")
+                return []
+            
+            # 获取访问令牌
+            token = await self._get_amadeus_token()
+            if not token:
+                logger.error("无法获取Amadeus API访问令牌")
                 return []
             
             # 调用Amadeus API
-            flights = await self._get_amadeus_flights(origin, destination, departure_date, return_date)
+            flights = await self._get_amadeus_flights(origin, destination, departure_date, return_date, token)
             
             if not flights:
                 logger.warning("Amadeus API未返回数据，返回空列表")
@@ -49,38 +65,123 @@ class MCPClient:
             logger.error(f"获取航班数据失败: {e}")
             return []
     
+    async def _get_amadeus_token(self) -> Optional[str]:
+        """获取Amadeus API访问令牌"""
+        try:
+            # 检查现有令牌是否有效
+            if self._amadeus_token and self._token_expires_at:
+                if datetime.now().timestamp() < self._token_expires_at:
+                    logger.info("使用现有的有效令牌")
+                    return self._amadeus_token
+            
+            logger.info("开始获取新的Amadeus API令牌...")
+            
+            # 获取新令牌
+            data = {
+                "grant_type": "client_credentials",
+                "client_id": settings.AMADEUS_CLIENT_ID,
+                "client_secret": settings.AMADEUS_CLIENT_SECRET
+            }
+
+            logger.warning(f"AMADEUS ID: {settings.AMADEUS_CLIENT_ID}， 密码: {settings.AMADEUS_CLIENT_SECRET}")
+            
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+            
+            logger.info(f"请求URL: {settings.AMADEUS_TOKEN_URL}")
+            logger.info(f"请求数据: grant_type={data['grant_type']}, client_id={data['client_id'][:10]}...")
+            
+            response = await self.http_client.post(
+                settings.AMADEUS_TOKEN_URL,
+                data=data,
+                headers=headers
+            )
+            
+            logger.info(f"响应状态码: {response.status_code}")
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                self._amadeus_token = token_data.get("access_token")
+                expires_in = token_data.get("expires_in", 3600)  # 默认1小时
+                self._token_expires_at = datetime.now().timestamp() + expires_in - 60  # 提前1分钟过期
+                
+                logger.info("成功获取Amadeus API访问令牌")
+                return self._amadeus_token
+            else:
+                logger.error(f"获取Amadeus API令牌失败: {response.status_code}")
+                logger.error(f"响应内容: {response.text}")
+                return None
+                
+        except httpx.TimeoutException as e:
+            logger.error(f"获取Amadeus API令牌超时: {e}")
+            return None
+        except httpx.ConnectError as e:
+            logger.error(f"连接Amadeus API失败: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"获取Amadeus API令牌异常: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            return None
+    
     async def _get_amadeus_flights(
         self, 
         origin: str, 
         destination: str, 
         departure_date: date, 
-        return_date: date
+        return_date: date,
+        token: str
     ) -> List[Dict[str, Any]]:
         """调用Amadeus API获取航班数据"""
         try:
             # Amadeus API端点
-            url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
+            url = f"{settings.AMADEUS_API_BASE}/v2/shopping/flight-offers"
+            
+            # 获取城市代码
+            origin_code = self._get_city_code(origin)
+            destination_code = self._get_city_code(destination)
+            
+            if not origin_code or not destination_code:
+                logger.error(f"无法获取城市代码: {origin} -> {destination}")
+                return []
             
             params = {
-                "originLocationCode": self._get_city_code(origin),
-                "destinationLocationCode": self._get_city_code(destination),
+                "originLocationCode": origin_code,
+                "destinationLocationCode": destination_code,
                 "departureDate": departure_date.strftime("%Y-%m-%d"),
-                "returnDate": return_date.strftime("%Y-%m-%d"),
                 "adults": 1,
-                "max": 10
+                "max": 10,
+                "currencyCode": "CNY"
             }
             
+            # 如果是往返票，添加返回日期
+            if return_date and return_date > departure_date:
+                params["returnDate"] = return_date.strftime("%Y-%m-%d")
+            
             headers = {
-                "Authorization": f"Bearer {settings.FLIGHT_API_KEY}",
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json"
             }
             
+            logger.info(f"调用Amadeus API: {origin_code} -> {destination_code}, 出发: {departure_date}")
+            
             response = await self.http_client.get(url, params=params, headers=headers)
+            
             if response.status_code == 200:
                 data = response.json()
-                return self._parse_amadeus_flights(data)
+                flights = self._parse_amadeus_flights(data)
+                logger.info(f"成功解析 {len(flights)} 条航班数据")
+                return flights
+            elif response.status_code == 400:
+                logger.warning(f"Amadeus API请求参数错误: {response.text}")
+                return []
+            elif response.status_code == 401:
+                logger.error("Amadeus API认证失败，令牌可能已过期")
+                self._amadeus_token = None  # 清除无效令牌
+                return []
             else:
-                logger.error(f"Amadeus API错误: {response.status_code}")
+                logger.error(f"Amadeus API错误: {response.status_code} - {response.text}")
                 return []
                     
         except Exception as e:
@@ -92,36 +193,245 @@ class MCPClient:
         flights = []
         
         try:
-            for offer in data.get("data", []):
-                for itinerary in offer.get("itineraries", []):
-                    for segment in itinerary.get("segments", []):
-                        flight = {
-                            "id": f"flight_{len(flights) + 1}",
-                            "airline": segment.get("carrierCode", "Unknown"),
-                            "flight_number": segment.get("number", "N/A"),
-                            "departure_time": segment.get("departure", {}).get("at", "N/A"),
-                            "arrival_time": segment.get("arrival", {}).get("at", "N/A"),
-                            "duration": segment.get("duration", "N/A"),
-                            "price": float(offer.get("price", {}).get("total", 0)),
-                            "currency": offer.get("price", {}).get("currency", "CNY"),
-                            "aircraft": segment.get("aircraft", {}).get("code", "N/A"),
-                            "stops": 0,
-                            "origin": segment.get("departure", {}).get("iataCode", "N/A"),
-                            "destination": segment.get("arrival", {}).get("iataCode", "N/A"),
-                            "date": segment.get("departure", {}).get("at", "N/A"),
-                            "rating": 4.0
-                        }
-                        flights.append(flight)
+            offers = data.get("data", [])
+            if not offers:
+                logger.warning("Amadeus API返回的数据为空")
+                return []
+            
+            for offer_idx, offer in enumerate(offers):
+                price_info = offer.get("price", {})
+                total_price = float(price_info.get("total", 0))
+                currency = price_info.get("currency", "EUR")
+                
+                # 处理每个行程（往返票可能有多个行程）
+                for itinerary_idx, itinerary in enumerate(offer.get("itineraries", [])):
+                    segments = itinerary.get("segments", [])
+                    if not segments:
+                        continue
+                    
+                    # 计算总飞行时间
+                    total_duration = itinerary.get("duration", "PT0H0M")
+                    
+                    # 计算中转次数
+                    stops = max(0, len(segments) - 1)
+                    
+                    # 主要航段信息（第一段）
+                    first_segment = segments[0]
+                    last_segment = segments[-1]
+                    
+                    # 航空公司信息
+                    carrier_code = first_segment.get("carrierCode", "")
+                    flight_number = f"{carrier_code}{first_segment.get('number', '')}"
+                    
+                    # 时间信息
+                    departure_info = first_segment.get("departure", {})
+                    arrival_info = last_segment.get("arrival", {})
+                    
+                    departure_time = departure_info.get("at", "")
+                    arrival_time = arrival_info.get("at", "")
+                    
+                    # 机场信息
+                    origin_airport = departure_info.get("iataCode", "")
+                    destination_airport = arrival_info.get("iataCode", "")
+                    
+                    # 构建航班信息
+                    flight = {
+                        "id": f"amadeus_{offer_idx}_{itinerary_idx}",
+                        "airline": carrier_code,
+                        "airline_name": self._get_airline_name(carrier_code),
+                        "flight_number": flight_number,
+                        "departure_time": departure_time,
+                        "arrival_time": arrival_time,
+                        "duration": self._format_duration(total_duration),
+                        "price": total_price,
+                        "currency": currency,
+                        "price_cny": self._convert_to_cny(total_price, currency),
+                        "aircraft": first_segment.get("aircraft", {}).get("code", ""),
+                        "stops": stops,
+                        "origin": origin_airport,
+                        "destination": destination_airport,
+                        "date": departure_time.split("T")[0] if "T" in departure_time else departure_time,
+                        "rating": 4.2,  # 默认评分
+                        "cabin_class": self._get_cabin_class(offer),
+                        "baggage_allowance": self._get_baggage_info(offer),
+                        "segments": self._parse_segments(segments),
+                        "booking_class": offer.get("travelerPricings", [{}])[0].get("fareDetailsBySegment", [{}])[0].get("class", ""),
+                        "refundable": self._is_refundable(offer),
+                        "source": "amadeus"
+                    }
+                    
+                    flights.append(flight)
                         
+            logger.info(f"成功解析 {len(flights)} 条航班数据")
             return flights
             
         except Exception as e:
             logger.error(f"解析Amadeus航班数据失败: {e}")
             return []
     
-    def _get_city_code(self, city: str) -> str:
+    def _get_airline_name(self, carrier_code: str) -> str:
+        """获取航空公司名称"""
+        airline_names = {
+            "CA": "中国国际航空",
+            "MU": "中国东方航空", 
+            "CZ": "中国南方航空",
+            "HU": "海南航空",
+            "3U": "四川航空",
+            "9C": "春秋航空",
+            "JD": "首都航空",
+            "G5": "华夏航空",
+            "8L": "祥鹏航空",
+            "EU": "成都航空",
+            "AA": "美国航空",
+            "UA": "美国联合航空",
+            "DL": "达美航空",
+            "BA": "英国航空",
+            "LH": "汉莎航空",
+            "AF": "法国航空",
+            "KL": "荷兰皇家航空",
+            "EK": "阿联酋航空",
+            "QR": "卡塔尔航空",
+            "SQ": "新加坡航空",
+            "TG": "泰国国际航空",
+            "NH": "全日空",
+            "JL": "日本航空",
+            "KE": "大韩航空",
+            "OZ": "韩亚航空"
+        }
+        return airline_names.get(carrier_code, carrier_code)
+    
+    def _format_duration(self, duration: str) -> str:
+        """格式化飞行时间"""
+        try:
+            # 解析ISO 8601格式的时间 (PT2H30M)
+            if duration.startswith("PT"):
+                duration = duration[2:]  # 移除PT前缀
+                hours = 0
+                minutes = 0
+                
+                if "H" in duration:
+                    parts = duration.split("H")
+                    hours = int(parts[0])
+                    duration = parts[1] if len(parts) > 1 else ""
+                
+                if "M" in duration:
+                    minutes = int(duration.replace("M", ""))
+                
+                if hours > 0 and minutes > 0:
+                    return f"{hours}小时{minutes}分钟"
+                elif hours > 0:
+                    return f"{hours}小时"
+                elif minutes > 0:
+                    return f"{minutes}分钟"
+                else:
+                    return "未知"
+            else:
+                return duration
+        except:
+            return duration
+    
+    def _convert_to_cny(self, price: float, currency: str) -> float:
+        """转换价格为人民币（简化版本）"""
+        # 简化的汇率转换，实际应用中应该使用实时汇率API
+        exchange_rates = {
+            "CNY": 1.0,
+            "USD": 7.2,
+            "EUR": 7.8,
+            "GBP": 9.1,
+            "JPY": 0.048,
+            "KRW": 0.0055,
+            "SGD": 5.3,
+            "HKD": 0.92,
+            "AUD": 4.8,
+            "CAD": 5.3
+        }
+        rate = exchange_rates.get(currency, 1.0)
+        return round(price * rate, 2)
+    
+    def _get_cabin_class(self, offer: Dict[str, Any]) -> str:
+        """获取舱位等级"""
+        try:
+            traveler_pricings = offer.get("travelerPricings", [])
+            if traveler_pricings:
+                fare_details = traveler_pricings[0].get("fareDetailsBySegment", [])
+                if fare_details:
+                    cabin = fare_details[0].get("cabin", "ECONOMY")
+                    cabin_map = {
+                        "ECONOMY": "经济舱",
+                        "PREMIUM_ECONOMY": "超级经济舱", 
+                        "BUSINESS": "商务舱",
+                        "FIRST": "头等舱"
+                    }
+                    return cabin_map.get(cabin, "经济舱")
+        except:
+            pass
+        return "经济舱"
+    
+    def _get_baggage_info(self, offer: Dict[str, Any]) -> str:
+        """获取行李额度信息"""
+        try:
+            traveler_pricings = offer.get("travelerPricings", [])
+            if traveler_pricings:
+                fare_details = traveler_pricings[0].get("fareDetailsBySegment", [])
+                if fare_details:
+                    included_bags = fare_details[0].get("includedCheckedBags", {})
+                    if included_bags:
+                        quantity = included_bags.get("quantity", 0)
+                        weight = included_bags.get("weight", 0)
+                        weight_unit = included_bags.get("weightUnit", "KG")
+                        
+                        if quantity > 0:
+                            if weight > 0:
+                                return f"{quantity}件，每件{weight}{weight_unit}"
+                            else:
+                                return f"{quantity}件"
+                        elif weight > 0:
+                            return f"{weight}{weight_unit}"
+        except:
+            pass
+        return "请咨询航空公司"
+    
+    def _parse_segments(self, segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """解析航段信息"""
+        parsed_segments = []
+        for segment in segments:
+            parsed_segment = {
+                "carrier_code": segment.get("carrierCode", ""),
+                "flight_number": segment.get("number", ""),
+                "aircraft": segment.get("aircraft", {}).get("code", ""),
+                "departure": {
+                    "airport": segment.get("departure", {}).get("iataCode", ""),
+                    "terminal": segment.get("departure", {}).get("terminal", ""),
+                    "time": segment.get("departure", {}).get("at", "")
+                },
+                "arrival": {
+                    "airport": segment.get("arrival", {}).get("iataCode", ""),
+                    "terminal": segment.get("arrival", {}).get("terminal", ""),
+                    "time": segment.get("arrival", {}).get("at", "")
+                },
+                "duration": self._format_duration(segment.get("duration", ""))
+            }
+            parsed_segments.append(parsed_segment)
+        return parsed_segments
+    
+    def _is_refundable(self, offer: Dict[str, Any]) -> bool:
+        """判断是否可退款"""
+        try:
+            traveler_pricings = offer.get("travelerPricings", [])
+            if traveler_pricings:
+                fare_details = traveler_pricings[0].get("fareDetailsBySegment", [])
+                if fare_details:
+                    fare_basis = fare_details[0].get("fareBasis", "")
+                    # 简化判断逻辑，实际应该根据fare rules判断
+                    return "REFUNDABLE" in fare_basis.upper()
+        except:
+            pass
+        return False
+    
+    def _get_city_code(self, city: str) -> Optional[str]:
         """获取城市代码"""
         city_codes = {
+            # 中国大陆主要城市
             "北京": "PEK",
             "上海": "PVG", 
             "广州": "CAN",
@@ -148,11 +458,123 @@ class MCPClient:
             "银川": "INC",
             "乌鲁木齐": "URC",
             "拉萨": "LXA",
+            "天津": "TSN",
+            "济南": "TNA",
+            "郑州": "CGO",
+            "合肥": "HFE",
+            "南昌": "KHN",
+            "福州": "FOC",
+            "海口": "HAK",
+            "三亚": "SYX",
+            "南宁": "NNG",
+            "贵阳": "KWE",
+            "桂林": "KWL",
+            
+            # 港澳台
             "香港": "HKG",
             "台北": "TPE",
-            "澳门": "MFM"
+            "高雄": "KHH",
+            "澳门": "MFM",
+            
+            # 亚洲主要城市
+            "东京": "NRT",
+            "大阪": "KIX",
+            "首尔": "ICN",
+            "釜山": "PUS",
+            "曼谷": "BKK",
+            "新加坡": "SIN",
+            "吉隆坡": "KUL",
+            "雅加达": "CGK",
+            "马尼拉": "MNL",
+            "胡志明市": "SGN",
+            "河内": "HAN",
+            "金边": "PNH",
+            "仰光": "RGN",
+            "达卡": "DAC",
+            "加德满都": "KTM",
+            "科伦坡": "CMB",
+            "德里": "DEL",
+            "孟买": "BOM",
+            "班加罗尔": "BLR",
+            "迪拜": "DXB",
+            "多哈": "DOH",
+            "阿布扎比": "AUH",
+            "科威特": "KWI",
+            "利雅得": "RUH",
+            "特拉维夫": "TLV",
+            
+            # 欧洲主要城市
+            "伦敦": "LHR",
+            "巴黎": "CDG",
+            "法兰克福": "FRA",
+            "阿姆斯特丹": "AMS",
+            "苏黎世": "ZUR",
+            "维也纳": "VIE",
+            "罗马": "FCO",
+            "米兰": "MXP",
+            "马德里": "MAD",
+            "巴塞罗那": "BCN",
+            "莫斯科": "SVO",
+            "圣彼得堡": "LED",
+            "伊斯坦布尔": "IST",
+            "雅典": "ATH",
+            "布拉格": "PRG",
+            "华沙": "WAW",
+            "布达佩斯": "BUD",
+            "斯德哥尔摩": "ARN",
+            "哥本哈根": "CPH",
+            "奥斯陆": "OSL",
+            "赫尔辛基": "HEL",
+            
+            # 北美主要城市
+            "纽约": "JFK",
+            "洛杉矶": "LAX",
+            "芝加哥": "ORD",
+            "旧金山": "SFO",
+            "西雅图": "SEA",
+            "波士顿": "BOS",
+            "华盛顿": "DCA",
+            "迈阿密": "MIA",
+            "拉斯维加斯": "LAS",
+            "多伦多": "YYZ",
+            "温哥华": "YVR",
+            "蒙特利尔": "YUL",
+            
+            # 大洋洲主要城市
+            "悉尼": "SYD",
+            "墨尔本": "MEL",
+            "布里斯班": "BNE",
+            "珀斯": "PER",
+            "奥克兰": "AKL",
+            
+            # 非洲主要城市
+            "开罗": "CAI",
+            "约翰内斯堡": "JNB",
+            "开普敦": "CPT",
+            "卡萨布兰卡": "CMN",
+            "内罗毕": "NBO",
+            
+            # 南美主要城市
+            "圣保罗": "GRU",
+            "里约热内卢": "GIG",
+            "布宜诺斯艾利斯": "EZE",
+            "利马": "LIM",
+            "圣地亚哥": "SCL"
         }
-        return city_codes.get(city, "PEK")  # 默认返回北京
+        
+        # 首先尝试精确匹配
+        if city in city_codes:
+            return city_codes[city]
+        
+        # 尝试模糊匹配（去除空格和常见后缀）
+        city_clean = city.replace(" ", "").replace("市", "").replace("省", "")
+        for key, code in city_codes.items():
+            if key.replace(" ", "") == city_clean:
+                return code
+        
+        # 如果都没有匹配，记录警告并返回None
+        logger.warning(f"未找到城市 '{city}' 的IATA代码")
+        return None
     
     
     async def get_hotels(

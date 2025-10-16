@@ -1,0 +1,185 @@
+{
+  "test_info": {
+    "timestamp": "2025-10-16T16:03:51.903054",
+    "description": "模拟的 Amadeus API 航班数据用于前端显示测试",
+    "route": "北京 -> 上海",
+    "total_flights": 3
+  },
+  "mock_flights": [
+    {
+      "id": "amadeus_0_0",
+      "airline": "CA",
+      "airline_name": "中国国际航空",
+      "flight_number": "CA1501",
+      "departure_time": "2025-10-23T08:30:00",
+      "arrival_time": "2025-10-23T11:15:00",
+      "duration": "2小时45分钟",
+      "price": 1280.5,
+      "currency": "CNY",
+      "price_cny": 1280.5,
+      "aircraft": "A320",
+      "stops": 0,
+      "origin": "PEK",
+      "destination": "PVG",
+      "date": "2025-10-23",
+      "rating": 4.2,
+      "cabin_class": "经济舱",
+      "baggage_allowance": "23kg托运行李",
+      "segments": [
+        {
+          "carrier_code": "CA",
+          "flight_number": "1501",
+          "aircraft": "A320",
+          "departure": {
+            "airport": "PEK",
+            "terminal": "T3",
+            "time": "2025-10-23T08:30:00"
+          },
+          "arrival": {
+            "airport": "PVG",
+            "terminal": "T2",
+            "time": "2025-10-23T11:15:00"
+          },
+          "duration": "2小时45分钟"
+        }
+      ],
+      "booking_class": "Y",
+      "refundable": true,
+      "source": "amadeus",
+      "collected_at": "2025-10-16T16:03:51.900936",
+      "route": "北京 -> 上海"
+    },
+    {
+      "id": "amadeus_1_0",
+      "airline": "MU",
+      "airline_name": "中国东方航空",
+      "flight_number": "MU5103",
+      "departure_time": "2025-10-23T14:20:00",
+      "arrival_time": "2025-10-23T17:05:00",
+      "duration": "2小时45分钟",
+      "price": 1150.0,
+      "currency": "CNY",
+      "price_cny": 1150.0,
+      "aircraft": "B737",
+      "stops": 0,
+      "origin": "PEK",
+      "destination": "PVG",
+      "date": "2025-10-23",
+      "rating": 4.1,
+      "cabin_class": "经济舱",
+      "baggage_allowance": "23kg托运行李",
+      "segments": [
+        {
+          "carrier_code": "MU",
+          "flight_number": "5103",
+          "aircraft": "B737",
+          "departure": {
+            "airport": "PEK",
+            "terminal": "T2",
+            "time": "2025-10-23T14:20:00"
+          },
+          "arrival": {
+            "airport": "PVG",
+            "terminal": "T1",
+            "time": "2025-10-23T17:05:00"
+          },
+          "duration": "2小时45分钟"
+        }
+      ],
+      "booking_class": "Y",
+      "refundable": false,
+      "source": "amadeus",
+      "collected_at": "2025-10-16T16:03:51.900936",
+      "route": "北京 -> 上海"
+    },
+    {
+      "id": "amadeus_2_0",
+      "airline": "CZ",
+      "airline_name": "中国南方航空",
+      "flight_number": "CZ3539",
+      "departure_time": "2025-10-23T19:45:00",
+      "arrival_time": "2025-10-23T22:30:00",
+      "duration": "2小时45分钟",
+      "price": 980.0,
+      "currency": "CNY",
+      "price_cny": 980.0,
+      "aircraft": "A321",
+      "stops": 0,
+      "origin": "PEK",
+      "destination": "PVG",
+      "date": "2025-10-23",
+      "rating": 4.0,
+      "cabin_class": "经济舱",
+      "baggage_allowance": "23kg托运行李",
+      "segments": [
+        {
+          "carrier_code": "CZ",
+          "flight_number": "3539",
+          "aircraft": "A321",
+          "departure": {
+            "airport": "PEK",
+            "terminal": "T2",
+            "time": "2025-10-23T19:45:00"
+          },
+          "arrival": {
+            "airport": "PVG",
+            "terminal": "T1",
+            "time": "2025-10-23T22:30:00"
+          },
+          "duration": "2小时45分钟"
+        }
+      ],
+      "booking_class": "Y",
+      "refundable": true,
+      "source": "amadeus",
+      "collected_at": "2025-10-16T16:03:51.900936",
+      "route": "北京 -> 上海"
+    }
+  ],
+  "formatted_for_llm": "\n  1. 航班号: CA1501\n     航空公司: 中国国际航空\n     出发时间: 08:30\n     到达时间: 11:15\n     飞行时长: 2小时45分钟\n     价格: 1280.5元\n     舱位等级: 经济舱\n     中转情况: 直飞\n     出发机场: PEK\n     到达机场: PVG\n     行李额度: 23kg托运行李\n\n  2. 航班号: MU5103\n     航空公司: 中国东方航空\n     出发时间: 14:20\n     到达时间: 17:05\n     飞行时长: 2小时45分钟\n     价格: 1150.0元\n     舱位等级: 经济舱\n     中转情况: 直飞\n     出发机场: PEK\n     到达机场: PVG\n     行李额度: 23kg托运行李\n\n  3. 航班号: CZ3539\n     航空公司: 中国南方航空\n     出发时间: 19:45\n     到达时间: 22:30\n     飞行时长: 2小时45分钟\n     价格: 980.0元\n     舱位等级: 经济舱\n     中转情况: 直飞\n     出发机场: PEK\n     到达机场: PVG\n     行李额度: 23kg托运行李",
+  "frontend_test_data": {
+    "flight": {
+      "id": "amadeus_0_0",
+      "airline": "CA",
+      "airline_name": "中国国际航空",
+      "flight_number": "CA1501",
+      "departure_time": "2025-10-23T08:30:00",
+      "arrival_time": "2025-10-23T11:15:00",
+      "duration": "2小时45分钟",
+      "price": 1280.5,
+      "currency": "CNY",
+      "price_cny": 1280.5,
+      "aircraft": "A320",
+      "stops": 0,
+      "origin": "PEK",
+      "destination": "PVG",
+      "date": "2025-10-23",
+      "rating": 4.2,
+      "cabin_class": "经济舱",
+      "baggage_allowance": "23kg托运行李",
+      "segments": [
+        {
+          "carrier_code": "CA",
+          "flight_number": "1501",
+          "aircraft": "A320",
+          "departure": {
+            "airport": "PEK",
+            "terminal": "T3",
+            "time": "2025-10-23T08:30:00"
+          },
+          "arrival": {
+            "airport": "PVG",
+            "terminal": "T2",
+            "time": "2025-10-23T11:15:00"
+          },
+          "duration": "2小时45分钟"
+        }
+      ],
+      "booking_class": "Y",
+      "refundable": true,
+      "source": "amadeus",
+      "collected_at": "2025-10-16T16:03:51.900936",
+      "route": "北京 -> 上海"
+    }
+  }
+}

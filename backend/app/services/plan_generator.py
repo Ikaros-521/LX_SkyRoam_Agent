@@ -487,14 +487,38 @@ class PlanGenerator:
         formatted_items = []
         for i, item in enumerate(data[:10]):  # 限制数量，避免prompt过长
             if data_type == 'flight':
+                # 格式化时间显示
+                departure_time = item.get('departure_time', 'N/A')
+                arrival_time = item.get('arrival_time', 'N/A')
+                if departure_time != 'N/A' and 'T' in departure_time:
+                    departure_time = departure_time.split('T')[1][:5]  # 只显示时间部分 HH:MM
+                if arrival_time != 'N/A' and 'T' in arrival_time:
+                    arrival_time = arrival_time.split('T')[1][:5]  # 只显示时间部分 HH:MM
+                
+                # 格式化价格显示
+                price_display = "N/A"
+                if item.get('price_cny'):
+                    price_display = f"{item.get('price_cny')}元"
+                elif item.get('price'):
+                    currency = item.get('currency', 'CNY')
+                    price_display = f"{item.get('price')}{currency}"
+                
+                # 中转信息
+                stops = item.get('stops', 0)
+                stops_text = "直飞" if stops == 0 else f"{stops}次中转"
+                
                 formatted_items.append(f"""
-  {i+1}. 航空公司: {item.get('airline', 'N/A')}
-     出发时间: {item.get('departure_time', 'N/A')}
-     到达时间: {item.get('arrival_time', 'N/A')}
-     价格: {item.get('price', 'N/A')}元
-     评分: {item.get('rating', 'N/A')}
-     出发地: {item.get('departure_city', 'N/A')}
-     目的地: {item.get('arrival_city', 'N/A')}""")
+  {i+1}. 航班号: {item.get('flight_number', 'N/A')}
+     航空公司: {item.get('airline_name', item.get('airline', 'N/A'))}
+     出发时间: {departure_time}
+     到达时间: {arrival_time}
+     飞行时长: {item.get('duration', 'N/A')}
+     价格: {price_display}
+     舱位等级: {item.get('cabin_class', 'N/A')}
+     中转情况: {stops_text}
+     出发机场: {item.get('origin', 'N/A')}
+     到达机场: {item.get('destination', 'N/A')}
+     行李额度: {item.get('baggage_allowance', 'N/A')}""")
             
             elif data_type == 'hotel':
                 formatted_items.append(f"""
