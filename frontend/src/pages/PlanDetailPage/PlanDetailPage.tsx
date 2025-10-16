@@ -31,7 +31,8 @@ import {
   PhoneOutlined,
   PictureOutlined,
   ShopOutlined,
-  TagOutlined
+  TagOutlined,
+  HomeOutlined
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
@@ -57,6 +58,7 @@ const PlanDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [showAllHotels, setShowAllHotels] = useState(false);
 
   useEffect(() => {
     fetchPlanDetail();
@@ -176,13 +178,33 @@ const PlanDetailPage: React.FC = () => {
 
   // 格式化距离信息
   const formatDistance = (distance: any): string => {
-    if (!distance) return '';
+    if (!distance || distance === '未知') return '';
     
     if (typeof distance === 'number') {
       if (distance < 1000) {
         return `${distance}m`;
       } else {
         return `${(distance / 1000).toFixed(1)}km`;
+      }
+    }
+    
+    if (typeof distance === 'string') {
+      // 处理字符串格式的距离，如 "1200" 或 "1.2km"
+      const numMatch = distance.match(/(\d+\.?\d*)/);
+      if (numMatch) {
+        const num = parseFloat(numMatch[1]);
+        if (distance.includes('km')) {
+          return `${num}km`;
+        } else if (distance.includes('m')) {
+          return `${num}m`;
+        } else {
+          // 假设是米
+          if (num < 1000) {
+            return `${num}m`;
+          } else {
+            return `${(num / 1000).toFixed(1)}km`;
+          }
+        }
       }
     }
     
@@ -784,16 +806,341 @@ const PlanDetailPage: React.FC = () => {
               </Col>
               
               <Col xs={24} md={12}>
-                <Card title="酒店信息" size="small">
+                <Card title={
+                  <Space>
+                    <ShopOutlined />
+                    <span>酒店信息</span>
+                  </Space>
+                } size="small">
                   {currentPlan.hotel ? (
-                    <Space direction="vertical" size="small">
-                      <Text strong>{currentPlan.hotel.name}</Text>
-                      <Text>{currentPlan.hotel.address}</Text>
-                      <Rate disabled defaultValue={currentPlan.hotel.rating || 0} />
-                      <Text>每晚: ¥{currentPlan.hotel.price_per_night}</Text>
-                    </Space>
+                    <Card 
+                      size="small" 
+                      style={{ width: '100%' }}
+                      bodyStyle={{ padding: '12px' }}
+                    >
+                      <Row gutter={[12, 8]} align="top">
+                        {/* 酒店图片 */}
+                        <Col span={6}>
+                          {currentPlan.hotel.images && currentPlan.hotel.images.length > 0 ? (
+                            <Image
+                              width={70}
+                              height={70}
+                              src={currentPlan.hotel.images[0]}
+                              alt={currentPlan.hotel.name}
+                              style={{ borderRadius: '8px', objectFit: 'cover' }}
+                              fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0yMCAyMEg0MFY0MEgyMFYyMFoiIGZpbGw9IiNEOUQ5RDkiLz4KPC9zdmc+"
+                              preview={{
+                                mask: <PictureOutlined style={{ fontSize: '16px' }} />
+                              }}
+                            />
+                          ) : (
+                            <div 
+                              style={{ 
+                                width: 70, 
+                                height: 70, 
+                                backgroundColor: '#f5f5f5', 
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: '1px solid #e8e8e8'
+                              }}
+                            >
+                              <PictureOutlined style={{ color: '#ccc', fontSize: '24px' }} />
+                            </div>
+                          )}
+                        </Col>
+                        
+                        {/* 酒店基本信息 */}
+                        <Col span={18}>
+                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                            {/* 酒店名称和评分 */}
+                            <Row justify="space-between" align="middle">
+                              <Col>
+                                <Text strong style={{ fontSize: '14px' }}>
+                                  {currentPlan.hotel.name}
+                                </Text>
+                              </Col>
+                              <Col>
+                                <Space size={4}>
+                                  <Rate 
+                                    disabled 
+                                    defaultValue={currentPlan.hotel.rating || 0} 
+                                    style={{ fontSize: '12px' }}
+                                  />
+                                  <Text style={{ fontSize: '12px', color: '#666' }}>
+                                    {currentPlan.hotel.rating ? currentPlan.hotel.rating.toFixed(1) : 'N/A'}
+                                  </Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                            
+                            {/* 星级和价格 */}
+                            <Row justify="space-between" align="middle">
+                              <Col>
+                                <Space size={4}>
+                                  <StarOutlined style={{ fontSize: '12px', color: '#faad14' }} />
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                                    {currentPlan.hotel.star_rating ? `${currentPlan.hotel.star_rating}星级` : '星级未知'}
+                                  </Text>
+                                </Space>
+                              </Col>
+                              <Col>
+                                <Space size={4}>
+                                  <DollarOutlined style={{ fontSize: '12px', color: '#52c41a' }} />
+                                  <Text style={{ fontSize: '12px', color: '#52c41a' }}>
+                                    每晚: ¥{currentPlan.hotel.price_per_night}
+                                  </Text>
+                                </Space>
+                              </Col>
+                            </Row>
+                            
+                            {/* 地址信息 */}
+                            {currentPlan.hotel.address && (
+                              <Row>
+                                <Col span={24}>
+                                  <Space size={4} align="start">
+                                    <EnvironmentOutlined style={{ fontSize: '12px', color: '#666', marginTop: '2px' }} />
+                                    <Text 
+                                      type="secondary" 
+                                      style={{ 
+                                        fontSize: '11px',
+                                        wordBreak: 'break-all',
+                                        whiteSpace: 'normal',
+                                        lineHeight: '1.4'
+                                      }}
+                                    >
+                                      {currentPlan.hotel.address}
+                                    </Text>
+                                  </Space>
+                                </Col>
+                              </Row>
+                            )}
+                            
+                            {/* 电话和距离 */}
+                            <Row justify="space-between" align="middle">
+                              {currentPlan.hotel.phone && (
+                                <Col>
+                                  <Space size={4}>
+                                    <PhoneOutlined style={{ fontSize: '12px', color: '#1890ff' }} />
+                                    <Text style={{ fontSize: '11px', color: '#1890ff' }}>
+                                      {currentPlan.hotel.phone}
+                                    </Text>
+                                  </Space>
+                                </Col>
+                              )}
+                              {currentPlan.hotel.distance && (
+                                <Col>
+                                  <Text type="secondary" style={{ fontSize: '11px' }}>
+                                    距离: {formatDistance(currentPlan.hotel.distance)}
+                                  </Text>
+                                </Col>
+                              )}
+                            </Row>
+                            
+                            {/* 酒店设施 */}
+                            {currentPlan.hotel.amenities && currentPlan.hotel.amenities.length > 0 && (
+                              <Row>
+                                <Col span={24}>
+                                  <Space size={4} wrap>
+                                    {currentPlan.hotel.amenities.slice(0, 4).map((amenity: string, index: number) => (
+                                      <Tag 
+                                        key={index} 
+                                        color="blue"
+                                        style={{ 
+                                          fontSize: '10px', 
+                                          padding: '2px 6px',
+                                          margin: '1px',
+                                          height: '20px',
+                                          lineHeight: '16px',
+                                          borderRadius: '4px'
+                                        }}
+                                      >
+                                        {amenity}
+                                      </Tag>
+                                    ))}
+                                    {currentPlan.hotel.amenities.length > 4 && (
+                                      <Text type="secondary" style={{ fontSize: '10px', fontWeight: '500' }}>
+                                        +{currentPlan.hotel.amenities.length - 4}项
+                                      </Text>
+                                    )}
+                                  </Space>
+                                </Col>
+                              </Row>
+                            )}
+                            
+                            {/* 入住退房时间 */}
+                            {(currentPlan.hotel.check_in || currentPlan.hotel.check_out) && (
+                              <Row>
+                                <Col span={24}>
+                                  <Space size={8}>
+                                    {currentPlan.hotel.check_in && (
+                                      <Text type="secondary" style={{ fontSize: '10px' }}>
+                                        <ClockCircleOutlined style={{ marginRight: '2px' }} />
+                                        入住: {currentPlan.hotel.check_in}
+                                      </Text>
+                                    )}
+                                    {currentPlan.hotel.check_out && (
+                                      <Text type="secondary" style={{ fontSize: '10px' }}>
+                                        退房: {currentPlan.hotel.check_out}
+                                      </Text>
+                                    )}
+                                  </Space>
+                                </Col>
+                              </Row>
+                            )}
+                          </Space>
+                        </Col>
+                      </Row>
+                    </Card>
                   ) : (
                     <Text type="secondary">暂无酒店信息</Text>
+                  )}
+                  
+                  {/* 更多酒店选择 */}
+                  {currentPlan.hotel?.available_options && currentPlan.hotel.available_options.length > 1 && (
+                    <Card 
+                      size="small" 
+                      title={
+                        <Space>
+                          <HomeOutlined />
+                          <span>更多酒店选择</span>
+                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                            ({currentPlan.hotel.available_options.length}个选项)
+                          </Text>
+                        </Space>
+                      }
+                      style={{ marginTop: '12px' }}
+                    >
+                      <Row gutter={[8, 8]}>
+                        {(showAllHotels 
+                          ? currentPlan.hotel.available_options.slice(1) 
+                          : currentPlan.hotel.available_options.slice(1, 6)
+                        ).map((hotel: any, index: number) => (
+                          <Col span={24} key={index}>
+                            <Card size="small" style={{ backgroundColor: '#fafafa' }}>
+                              <Row gutter={8} align="middle">
+                                <Col flex="60px">
+                                  <div style={{
+                                    width: '50px',
+                                    height: '50px',
+                                    backgroundColor: '#f0f0f0',
+                                    borderRadius: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '20px'
+                                  }}>
+                                    🏨
+                                  </div>
+                                </Col>
+                                <Col flex="auto">
+                                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                                    <Row justify="space-between" align="middle">
+                                      <Col>
+                                        <Text strong style={{ fontSize: '13px' }}>
+                                          {hotel.name}
+                                        </Text>
+                                      </Col>
+                                      <Col>
+                                        <Rate 
+                                          disabled 
+                                          value={hotel.star_rating || Math.round(hotel.rating)} 
+                                          style={{ fontSize: '10px' }}
+                                        />
+                                      </Col>
+                                    </Row>
+                                    
+                                    <Row gutter={[8, 2]}>
+                                      <Col span={8}>
+                                        <Text style={{ fontSize: '11px', color: '#ff4d4f' }}>
+                                          ¥{hotel.price_per_night}/晚
+                                        </Text>
+                                      </Col>
+                                      <Col span={8}>
+                                        <Text type="secondary" style={{ fontSize: '10px' }}>
+                                          评分: {hotel.rating}
+                                        </Text>
+                                      </Col>
+                                      {hotel.distance && formatDistance(hotel.distance) && (
+                                        <Col span={8}>
+                                          <Text type="secondary" style={{ fontSize: '10px' }}>
+                                            距离: {formatDistance(hotel.distance)}
+                                          </Text>
+                                        </Col>
+                                      )}
+                                    </Row>
+                                    
+                                    <Row>
+                                      <Col span={24}>
+                                        <Text 
+                                          type="secondary" 
+                                          style={{ 
+                                            fontSize: '10px',
+                                            display: '-webkit-box',
+                                            WebkitLineClamp: 1,
+                                            WebkitBoxOrient: 'vertical',
+                                            overflow: 'hidden'
+                                          }}
+                                        >
+                                          {hotel.address}
+                                        </Text>
+                                      </Col>
+                                    </Row>
+                                    
+                                    {hotel.amenities && hotel.amenities.length > 0 && (
+                                      <Row>
+                                        <Col span={24}>
+                                          <Space size={2} wrap>
+                                            {hotel.amenities.slice(0, 3).map((amenity: string, amenityIndex: number) => (
+                                              <Tag 
+                                                key={amenityIndex} 
+                                                style={{ 
+                                                  fontSize: '9px', 
+                                                  padding: '0px 3px',
+                                                  margin: '1px',
+                                                  height: '16px',
+                                                  lineHeight: '14px'
+                                                }}
+                                              >
+                                                {amenity}
+                                              </Tag>
+                                            ))}
+                                            {hotel.amenities.length > 3 && (
+                                              <Text type="secondary" style={{ fontSize: '9px' }}>
+                                                +{hotel.amenities.length - 3}项
+                                              </Text>
+                                            )}
+                                          </Space>
+                                        </Col>
+                                      </Row>
+                                    )}
+                                  </Space>
+                                </Col>
+                              </Row>
+                            </Card>
+                          </Col>
+                        ))}
+                        
+                        {currentPlan.hotel.available_options.length > 6 && (
+                          <Col span={24}>
+                            <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                              <Button 
+                                type="link" 
+                                size="small"
+                                onClick={() => setShowAllHotels(!showAllHotels)}
+                                style={{ fontSize: '11px', padding: '0' }}
+                              >
+                                {showAllHotels 
+                                  ? '收起酒店选项' 
+                                  : `展开查看剩余 ${currentPlan.hotel.available_options.length - 6} 个酒店选项`
+                                }
+                              </Button>
+                            </div>
+                          </Col>
+                        )}
+                      </Row>
+                    </Card>
                   )}
                 </Card>
               </Col>

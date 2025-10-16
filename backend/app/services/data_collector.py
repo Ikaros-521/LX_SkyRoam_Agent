@@ -91,14 +91,68 @@ class DataCollector:
                 logger.info(f"使用缓存的酒店数据: {destination}")
                 return cached_data
             
-            # 使用MCP工具收集酒店信息
-            hotel_data = await self.mcp_client.get_hotels(
-                destination=destination,
-                check_in=start_date.date(),
-                check_out=end_date.date()
-            )
+            hotel_data = []
             
-            # 已移除爬虫功能，只使用MCP数据
+            # 优先使用高德地图周边搜索获取酒店信息
+            try:
+                # 获取目的地坐标
+                destination_coords = await self.amap_client.geocode(destination)
+                if destination_coords:
+                    location = f"{destination_coords['lng']},{destination_coords['lat']}"
+                    
+                    # 使用高德地图周边搜索酒店
+                    amap_hotels = await self.amap_client.search_places_around(
+                        location=location,
+                        keywords="酒店",
+                        types="100000",  # 住宿服务
+                        radius=10000,    # 10公里范围
+                        offset=20
+                    )
+                    
+                    # 转换高德地图数据格式
+                    for hotel in amap_hotels:
+                        hotel_item = {
+                            "id": f"amap_hotel_{hotel.get('id', len(hotel_data) + 1)}",
+                            "name": hotel.get("name", "未知酒店"),
+                            "address": hotel.get("address", "地址未知"),
+                            "rating": float(hotel.get("rating", 0)) if hotel.get("rating") else 4.0,
+                            "price_per_night": self._estimate_hotel_price(hotel),
+                            "currency": "CNY",
+                            "amenities": self._parse_hotel_amenities(hotel),
+                            "room_types": ["标准间", "大床房"],
+                            "check_in": start_date.strftime("%Y-%m-%d"),
+                            "check_out": end_date.strftime("%Y-%m-%d"),
+                            "images": [],
+                            "coordinates": {
+                                "lng": float(hotel.get("location", "0,0").split(",")[0]),
+                                "lat": float(hotel.get("location", "0,0").split(",")[1])
+                            } if hotel.get("location") else {},
+                            "star_rating": self._estimate_star_rating(hotel),
+                            "distance": hotel.get("distance", "未知"),
+                            "phone": hotel.get("tel", ""),
+                            "source": "高德地图周边搜索"
+                        }
+                        hotel_data.append(hotel_item)
+                    
+                    logger.info(f"从高德地图周边搜索获取到 {len(amap_hotels)} 条酒店数据")
+                else:
+                    logger.warning(f"无法获取 {destination} 的坐标，跳过高德地图周边搜索")
+                
+            except Exception as e:
+                logger.warning(f"高德地图酒店周边搜索调用失败: {e}")
+            
+            # 如果数据不足，使用MCP工具补充
+            if len(hotel_data) < 10:
+                try:
+                    mcp_data = await self.mcp_client.get_hotels(
+                        destination=destination,
+                        check_in=start_date.date(),
+                        check_out=end_date.date()
+                    )
+                    hotel_data.extend(mcp_data)
+                    logger.info(f"从MCP服务补充 {len(mcp_data)} 条酒店数据")
+                except Exception as e:
+                    logger.warning(f"MCP酒店服务调用失败: {e}")
             
             # 缓存数据
             await set_cache(cache_key_str, hotel_data, ttl=300)  # 5分钟缓存
@@ -109,6 +163,73 @@ class DataCollector:
         except Exception as e:
             logger.error(f"收集酒店数据失败: {e}")
             return []
+    
+    def _estimate_hotel_price(self, hotel: Dict[str, Any]) -> float:
+        """根据酒店信息估算价格"""
+        # 根据酒店类型和评分估算价格
+        name = hotel.get("name", "").lower()
+        rating = float(hotel.get("rating", 0)) if hotel.get("rating") else 4.0
+        
+        # 基础价格
+        base_price = 200
+        
+        # 根据酒店名称关键词调整价格
+        if any(keyword in name for keyword in ["五星", "豪华", "万豪", "希尔顿", "洲际", "凯悦"]):
+            base_price = 800
+        elif any(keyword in name for keyword in ["四星", "商务", "精品"]):
+            base_price = 400
+        elif any(keyword in name for keyword in ["三星", "快捷", "如家", "汉庭", "7天"]):
+            base_price = 150
+        
+        # 根据评分调整价格
+        price_multiplier = max(0.5, rating / 5.0)
+        
+        return round(base_price * price_multiplier, 2)
+    
+    def _parse_hotel_amenities(self, hotel: Dict[str, Any]) -> List[str]:
+        """解析酒店设施信息"""
+        amenities = []
+        
+        # 基础设施
+        amenities.extend(["免费WiFi", "24小时前台", "空调"])
+        
+        # 根据酒店类型添加设施
+        name = hotel.get("name", "").lower()
+        if any(keyword in name for keyword in ["五星", "豪华", "万豪", "希尔顿", "洲际", "凯悦"]):
+            amenities.extend(["健身房", "游泳池", "餐厅", "商务中心", "停车场", "客房服务"])
+        elif any(keyword in name for keyword in ["四星", "商务", "精品"]):
+            amenities.extend(["健身房", "餐厅", "停车场"])
+        elif any(keyword in name for keyword in ["三星", "快捷"]):
+            amenities.extend(["停车场"])
+        
+        return amenities
+    
+    def _estimate_star_rating(self, hotel: Dict[str, Any]) -> int:
+        """估算酒店星级"""
+        name = hotel.get("name", "").lower()
+        rating = float(hotel.get("rating", 0)) if hotel.get("rating") else 4.0
+        
+        # 根据酒店名称关键词判断星级
+        if any(keyword in name for keyword in ["五星", "豪华", "万豪", "希尔顿", "洲际", "凯悦"]):
+            return 5
+        elif any(keyword in name for keyword in ["四星", "商务", "精品"]):
+            return 4
+        elif any(keyword in name for keyword in ["三星"]):
+            return 3
+        elif any(keyword in name for keyword in ["快捷", "如家", "汉庭", "7天"]):
+            return 2
+        else:
+            # 根据评分估算星级
+            if rating >= 4.5:
+                return 5
+            elif rating >= 4.0:
+                return 4
+            elif rating >= 3.5:
+                return 3
+            elif rating >= 3.0:
+                return 2
+            else:
+                return 1
     
     async def collect_attraction_data(self, destination: str) -> List[Dict[str, Any]]:
         """收集景点数据"""
@@ -383,19 +504,13 @@ class DataCollector:
                 try:
                     logger.info(f"使用高德地图周边搜索收集餐厅数据: {destination}")
                     
-                    # 首先获取目的地的坐标
-                    city_name = await self.city_resolver.resolve_city(destination)
-                    
                     # 使用高德地图地理编码获取中心点坐标
-                    from app.tools.baidu_maps_integration import map_geocode
-                    geocode_result = await map_geocode(destination)
+                    destination_coords = await self.amap_client.geocode(destination)
                     
                     center_location = None
-                    if geocode_result.get("status") == 0:
-                        location_info = geocode_result.get("result", {}).get("location", {})
-                        if location_info:
-                            # 百度地图坐标转高德地图坐标格式 (经度,纬度)
-                            center_location = f"{location_info.get('lng')},{location_info.get('lat')}"
+                    if destination_coords:
+                        # 高德地图坐标格式 (经度,纬度)
+                        center_location = f"{destination_coords['lng']},{destination_coords['lat']}"
                     
                     if center_location:
                         # 使用周边搜索获取餐厅数据

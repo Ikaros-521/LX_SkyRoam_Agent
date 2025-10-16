@@ -303,6 +303,39 @@ class PlanGenerator:
                             'travel_recommendations': ["建议根据当地天气情况合理安排行程"]
                         }
                 
+                # 为每个方案添加原始酒店数据
+                hotel_data = processed_data.get('hotels', [])
+                for plan_data in validated_plans:
+                    if 'hotel' in plan_data:
+                        # 保留LLM生成的酒店信息，添加原始酒店数据
+                        plan_data['hotel']['raw_data'] = hotel_data
+                        plan_data['hotel']['available_options'] = hotel_data[:10]  # 提供前10个酒店选项
+                    else:
+                        # 如果LLM没有生成hotel，创建一个默认的
+                        if hotel_data:
+                            # 使用第一个酒店作为默认选择
+                            default_hotel = hotel_data[0]
+                            plan_data['hotel'] = {
+                                'name': default_hotel.get('name', '推荐酒店'),
+                                'address': default_hotel.get('address', ''),
+                                'price_per_night': default_hotel.get('price_per_night', 200),
+                                'rating': default_hotel.get('rating', 4.0),
+                                'amenities': default_hotel.get('amenities', []),
+                                'raw_data': hotel_data,
+                                'available_options': hotel_data[:10]
+                            }
+                        else:
+                            # 没有酒店数据时的默认处理
+                            plan_data['hotel'] = {
+                                'name': '待选择酒店',
+                                'address': '请根据实际需求选择',
+                                'price_per_night': 200,
+                                'rating': 4.0,
+                                'amenities': [],
+                                'raw_data': [],
+                                'available_options': []
+                            }
+                
                 return validated_plans
                 
             except json.JSONDecodeError as e:

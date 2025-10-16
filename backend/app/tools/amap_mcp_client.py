@@ -412,18 +412,37 @@ class AmapMCPClient:
                 location_str = poi.get("location", "")
                 coordinates = {}
                 if location_str and "," in location_str:
-                    lng, lat = location_str.split(",")
-                    coordinates = {
-                        "lng": float(lng.strip()),
-                        "lat": float(lat.strip())
-                    }
+                    try:
+                        lng, lat = location_str.split(",")
+                        coordinates = {
+                            "lng": float(lng.strip()),
+                            "lat": float(lat.strip())
+                        }
+                    except (ValueError, IndexError) as e:
+                        logger.warning(f"坐标解析失败: {location_str}, 错误: {e}")
+                        coordinates = {}
                 
                 # 提取商业扩展信息（评分、价格等）
                 biz_ext = poi.get("biz_ext", {})
                 rating = 0.0
                 cost = ""
                 if biz_ext:
-                    rating = float(biz_ext.get("rating", 0))
+                    # 安全地解析评分，处理可能的列表或其他类型
+                    rating_value = biz_ext.get("rating", 0)
+                    if isinstance(rating_value, (int, float)):
+                        rating = float(rating_value)
+                    elif isinstance(rating_value, str) and rating_value.replace(".", "").isdigit():
+                        rating = float(rating_value)
+                    elif isinstance(rating_value, list) and rating_value:
+                        # 如果是列表，取第一个有效值
+                        for item in rating_value:
+                            if isinstance(item, (int, float)):
+                                rating = float(item)
+                                break
+                            elif isinstance(item, str) and item.replace(".", "").isdigit():
+                                rating = float(item)
+                                break
+                    
                     cost = biz_ext.get("cost", "")
                 
                 # 提取图片信息
@@ -681,6 +700,128 @@ class AmapMCPClient:
             logger.warning(f"生成天气建议失败: {e}")
         
         return recommendations
+    
+    async def geocode(self, address: str, city: str = "") -> Optional[Dict[str, Any]]:
+        """地理编码 - 地址转坐标"""
+        try:
+            if not self.api_key:
+                logger.warning("高德地图API密钥未配置")
+                return None
+            
+            # 构建 MCP 请求
+            mcp_request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "geocode",
+                "params": {
+                    "address": address,
+                    "city": city
+                }
+            }
+            
+            if self.mode == "sse":
+                return await self._geocode_sse(mcp_request)
+            else:
+                return await self._geocode_http(mcp_request)
+                
+        except Exception as e:
+            logger.error(f"高德地图地理编码失败: {e}")
+            return None
+    
+    async def _geocode_http(self, mcp_request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """使用 HTTP 方式进行地理编码"""
+        try:
+            response = await self.http_client.post(
+                self.base_url,
+                json=mcp_request,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            if result.get("error"):
+                logger.error(f"高德地图地理编码MCP错误: {result['error']}")
+                return None
+            
+            return self._parse_geocode_response(result.get("result", {}))
+            
+        except Exception as e:
+            logger.error(f"高德地图HTTP地理编码失败: {e}")
+            return None
+    
+    async def _geocode_sse(self, mcp_request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """使用 SSE 方式进行地理编码"""
+        try:
+            async with self.http_client.stream(
+                "POST",
+                self.base_url,
+                json=mcp_request,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "text/event-stream"
+                }
+            ) as response:
+                response.raise_for_status()
+                
+                result_data = {}
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+                            if data.get("id") == 1:
+                                result_data = data.get("result", {})
+                                break
+                        except json.JSONDecodeError:
+                            continue
+                
+                return self._parse_geocode_response(result_data)
+                
+        except Exception as e:
+            logger.error(f"高德地图SSE地理编码失败: {e}")
+            return None
+    
+    def _parse_geocode_response(self, result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """解析地理编码响应"""
+        try:
+            if not result:
+                return None
+            
+            # 解析高德地图地理编码响应
+            geocodes = result.get("geocodes", [])
+            if not geocodes:
+                logger.warning("地理编码未返回结果")
+                return None
+            
+            # 取第一个结果
+            geocode = geocodes[0]
+            location = geocode.get("location", "")
+            
+            if not location:
+                logger.warning("地理编码未返回坐标信息")
+                return None
+            
+            # 解析坐标
+            try:
+                lng, lat = location.split(",")
+                return {
+                    "lng": float(lng),
+                    "lat": float(lat),
+                    "formatted_address": geocode.get("formatted_address", ""),
+                    "level": geocode.get("level", ""),
+                    "country": geocode.get("country", ""),
+                    "province": geocode.get("province", ""),
+                    "city": geocode.get("city", ""),
+                    "district": geocode.get("district", ""),
+                    "adcode": geocode.get("adcode", "")
+                }
+            except (ValueError, IndexError) as e:
+                logger.error(f"解析坐标失败: {location}, 错误: {e}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"解析地理编码响应失败: {e}")
+            return None
     
     async def close(self):
         """关闭HTTP客户端"""
