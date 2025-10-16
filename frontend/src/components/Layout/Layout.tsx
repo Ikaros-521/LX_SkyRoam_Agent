@@ -89,7 +89,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               fontWeight: 'bold'
             }}
           >
-            LX SkyRoam Agent
+            洛曦 云游Agent
           </Title>
         </div>
 
@@ -135,7 +135,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       >
         <div style={{ color: '#666' }}>
           <p style={{ margin: '8px 0' }}>
-            © 2024 LX SkyRoam Agent. 智能旅游攻略生成器
+            © 2024 洛曦 云游Agent. 智能旅游攻略生成器
           </p>
           <p style={{ margin: '8px 0', fontSize: '12px' }}>
             基于AI技术，为您提供个性化的旅行方案规划

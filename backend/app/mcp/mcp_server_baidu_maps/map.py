@@ -122,7 +122,7 @@ async def map_geocode(
             "from": "py_mcp"
         }
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -134,9 +134,24 @@ async def map_geocode(
         return [types.TextContent(type="text", text=response.text)]
  
     except httpx.HTTPError as e:
-        raise Exception(f"HTTP request failed: {str(e)}") from e
+        error_msg = f"HTTP request failed: {str(e)}"
+        print(f"Baidu Maps API request failed: {error_msg}")
+        if 'url' in locals():
+            print(f"Request URL: {url}")
+        if 'params' in locals():
+            print(f"Request params: {mask_api_key(str(params))}")
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP request failed: Connection error, possibly due to network issues or invalid API address. Please check your network connection and API configuration."
+            print(f"Detailed error: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except KeyError as e:
-        raise Exception(f"Failed to parse reponse: {str(e)}") from e
+        error_msg = f"Failed to parse response: {str(e)}"
+        print(f"Baidu Maps geocode parsing error: {error_msg}")
+        raise Exception(error_msg) from e
 
 
 async def map_reverse_geocode(
@@ -162,7 +177,7 @@ async def map_reverse_geocode(
             "from": "py_mcp"
         }
  
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -174,9 +189,24 @@ async def map_reverse_geocode(
         return [types.TextContent(type="text", text=response.text)]
  
     except httpx.HTTPError as e:
-        raise Exception(f"HTTP request failed: {str(e)}") from e
+        error_msg = f"HTTP request failed: {str(e)}"
+        print(f"Baidu Maps API request failed: {error_msg}")
+        if 'url' in locals():
+            print(f"Request URL: {url}")
+        if 'params' in locals():
+            print(f"Request params: {mask_api_key(str(params))}")
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP request failed: Connection error, possibly due to network issues or invalid API address. Please check your network connection and API configuration."
+            print(f"Detailed error: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except KeyError as e:
-        raise Exception(f"Failed to parse reponse: {str(e)}") from e
+        error_msg = f"Failed to parse response: {str(e)}"
+        print(f"Baidu Maps parsing error: {error_msg}")
+        raise Exception(error_msg) from e
 
 
 async def map_search_places(
@@ -226,7 +256,7 @@ async def map_search_places(
             raise Exception("input `is_china` invaild, please reinput `is_china` with `true` or `false`")
 
  
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -239,9 +269,24 @@ async def map_search_places(
         return [types.TextContent(type="text", text=response.text)]
  
     except httpx.HTTPError as e:
-        raise Exception(f"HTTP request failed: {str(e)}") from e
+        error_msg = f"HTTP request failed: {str(e)}"
+        print(f"Baidu Maps API request failed: {error_msg}")
+        if 'url' in locals():
+            print(f"Request URL: {url}")
+        if 'params' in locals():
+            print(f"Request params: {mask_api_key(str(params))}")
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP request failed: Connection error, possibly due to network issues or invalid API address. Please check your network connection and API configuration."
+            print(f"Detailed error: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except KeyError as e:
-        raise Exception(f"Failed to parse reponse: {str(e)}") from e
+        error_msg = f"Failed to parse response: {str(e)}"
+        print(f"Baidu Maps parsing error: {error_msg}")
+        raise Exception(error_msg) from e
 
 
 async def map_place_details(
@@ -268,7 +313,7 @@ async def map_place_details(
             "from": "py_mcp"
         }
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -306,7 +351,7 @@ async def map_directions_matrix(
             "from": "py_mcp"
         }
  
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -354,7 +399,7 @@ async def map_directions(
             logger.debug(f"geocode_url: {geocode_url}")
             logger.debug(f"geocode_params: {geocode_params}")
             
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(proxies={}) as client:
                 geocode_response = await client.get(geocode_url, params=geocode_params)
                 geocode_response.raise_for_status()
                 geocode_result = geocode_response.json()
@@ -380,7 +425,7 @@ async def map_directions(
                 "from": "py_mcp"
             }
             
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(proxies={}) as client:
                 geocode_response = await client.get(geocode_url, params=geocode_params)
                 geocode_response.raise_for_status()
                 geocode_result = geocode_response.json()
@@ -420,7 +465,7 @@ async def map_directions(
                 "from": "py_mcp"
             }
  
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -479,7 +524,7 @@ async def map_weather(
         else:
             params["location"] = f"{location}"
  
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -513,7 +558,7 @@ async def map_ip_location(
             "ip": ip
         }
  
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -564,7 +609,7 @@ async def map_road_traffic(
             params['road_name'] = f'{road_name}'
             params['city'] = f'{city}'
  
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -608,7 +653,7 @@ async def map_poi_extract(
         }
 
         # 异步请求
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(proxies={}) as client:
             # 提交任务
             submit_resp = await client.post(
                 submit_url, data=submit_body, headers=headers, timeout=10.0

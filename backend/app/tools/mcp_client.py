@@ -18,7 +18,7 @@ class MCPClient:
     """MCP客户端"""
     
     def __init__(self):
-        self.http_client = httpx.AsyncClient(timeout=settings.MCP_TIMEOUT)
+        self.http_client = httpx.AsyncClient(timeout=settings.MCP_TIMEOUT, proxies={})
         self.base_url = "https://api.example.com"  # 示例API地址
     
     async def get_flights(

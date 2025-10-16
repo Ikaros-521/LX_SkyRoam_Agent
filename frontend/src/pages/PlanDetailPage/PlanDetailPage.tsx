@@ -132,6 +132,41 @@ const PlanDetailPage: React.FC = () => {
 
   const currentPlan = planDetail.generated_plans?.[selectedPlanIndex];
 
+  // 安全格式化展示交通信息，避免将对象直接作为 React 子节点
+  const formatTransportation = (transportation: any): React.ReactNode => {
+    if (!transportation) return '暂无';
+
+    if (Array.isArray(transportation)) {
+      return (
+        <Space wrap size="small">
+          {transportation.map((t: any, idx: number) => {
+            if (t == null) return <span key={idx}>-</span>;
+            if (typeof t === 'object') {
+              const type = t.type || '交通';
+              const distance = typeof t.distance === 'number' ? `${t.distance} 公里` : (t.distance || '');
+              const duration = typeof t.duration === 'number' ? `${t.duration} 分钟` : (t.duration || '');
+              const cost = t.cost != null ? `¥${t.cost}` : '';
+              const parts = [type, distance, duration, cost].filter(Boolean).join(' · ');
+              return <span key={idx}>{parts || type}</span>;
+            }
+            return <span key={idx}>{String(t)}</span>;
+          })}
+        </Space>
+      );
+    }
+
+    if (typeof transportation === 'object') {
+      const type = transportation.type || '交通';
+      const distance = typeof transportation.distance === 'number' ? `${transportation.distance} 公里` : (transportation.distance || '');
+      const duration = typeof transportation.duration === 'number' ? `${transportation.duration} 分钟` : (transportation.duration || '');
+      const cost = transportation.cost != null ? `¥${transportation.cost}` : '';
+      const parts = [type, distance, duration, cost].filter(Boolean).join(' · ');
+      return parts || type;
+    }
+
+    return String(transportation);
+  };
+
   return (
     <div className="plan-detail-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       {/* 计划头部信息 */}
@@ -254,7 +289,7 @@ const PlanDetailPage: React.FC = () => {
                               <Col span={8}>
                                 <Text type="secondary">交通</Text>
                                 <br />
-                                <Text>{day.transportation}</Text>
+                                <Text>{formatTransportation(day.transportation)}</Text>
                               </Col>
                               <Col span={8}>
                                 <Text type="secondary">预计费用</Text>

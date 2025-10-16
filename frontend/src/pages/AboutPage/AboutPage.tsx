@@ -87,7 +87,7 @@ const AboutPage: React.FC = () => {
               <div>
                 <Title level={1} style={{ margin: 0 }}>
                   <RocketOutlined style={{ marginRight: '12px', color: '#1890ff' }} />
-                  LX SkyRoam Agent
+                  洛曦 云游Agent
                 </Title>
                 <Title level={3} type="secondary" style={{ margin: '8px 0' }}>
                   智能旅游攻略生成器
@@ -95,7 +95,7 @@ const AboutPage: React.FC = () => {
               </div>
               
               <Paragraph style={{ fontSize: '16px', lineHeight: '1.8' }}>
-                LX SkyRoam Agent 是一款基于人工智能技术的智能旅行规划助手。
+                洛曦 云游Agent 是一款基于人工智能技术的智能旅行规划助手。
                 我们致力于为每一位旅行者提供个性化、专业化的旅行方案规划服务，
                 让每一次旅行都成为美好的回忆。
               </Paragraph>

@@ -8,6 +8,7 @@ from loguru import logger
 import random
 import json
 from app.tools.openai_client import openai_client
+from app.core.config import settings
 
 
 class PlanGenerator:
@@ -133,7 +134,16 @@ class PlanGenerator:
               "estimated_cost": 预估费用
             }
           ],
-          "transportation": "交通方式",
+          "transportation": {
+            "type": "交通方式",
+            "route": "具体路线",
+            "duration": "耗时(分钟)",
+            "distance": "距离(公里)",
+            "cost": "费用(元)",
+            "traffic_conditions": "路况信息",
+            "operating_hours": "运营时间",
+            "frequency": "发车频率"
+          },
           "estimated_cost": 当日总费用
         }
       ],
@@ -149,8 +159,23 @@ class PlanGenerator:
       "transportation": [
         {
           "type": "交通方式",
+          "name": "交通名称",
           "description": "描述",
-          "cost": 费用
+          "route": "具体路线",
+          "duration": "耗时(分钟)",
+          "distance": "距离(公里)",
+          "price": "费用(元)",
+          "currency": "货币",
+          "operating_hours": "运营时间",
+          "frequency": "发车频率",
+          "coverage": ["覆盖区域"],
+          "features": ["特色功能"],
+          "traffic_conditions": {
+            "congestion_level": "拥堵程度",
+            "road_conditions": ["道路状况"],
+            "real_time": true
+          },
+          "source": "数据来源"
         }
       ],
       "total_cost": {
@@ -209,20 +234,26 @@ class PlanGenerator:
 2. 必须使用提供的真实数据，不要虚构信息
 3. 每个方案都要包含完整的daily_itineraries数组
 4. 价格信息要基于真实数据，符合预算
-5. 景点安排要考虑地理位置和游览时间
-6. 餐饮建议要基于真实餐厅信息
+5. 景点安排要考虑地理位置和游览时间，优先选择交通便利的景点
+6. 餐饮建议要基于真实餐厅信息，考虑与景点的距离
 7. 交通方式要基于真实交通数据，包括耗时、费用、路况信息
 8. 优先考虑用户指定的出行方式：{plan.transportation or '未指定'}
 9. 在交通安排中要包含实时路况、拥堵情况、道路状况等详细信息
+10. 使用地图数据时，要充分利用距离、耗时、发车频率、路况等详细信息
+11. 景点选择要考虑交通便利性，优先推荐公共交通可达的景点
+12. 在daily_itineraries中要合理安排景点间的交通时间和方式
+13. 考虑不同交通方式的运营时间，避免安排超出运营时间的行程
 
 请直接返回JSON格式的结果，不要添加任何其他文本。
 """
             
+            logger.info(f"LLM用户提示: {user_prompt}")
+
             # 调用LLM
             response = await openai_client.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=4096,
+                max_tokens=settings.OPENAI_MAX_TOKENS,
                 temperature=0.7
             )
             
@@ -262,6 +293,8 @@ class PlanGenerator:
                     logger.error("所有LLM生成的方案都未通过验证")
                     return []
                 
+                # 关键：用真实交通数据校准LLM输出，避免距离/时长被编造
+                self._enforce_transportation_from_data(validated_plans, processed_data)
                 return validated_plans
                 
             except json.JSONDecodeError as e:
@@ -287,6 +320,7 @@ class PlanGenerator:
                                 plan_data['generated_at'] = datetime.utcnow().isoformat()
                                 validated_plans.append(plan_data)
                         
+                        self._enforce_transportation_from_data(validated_plans, processed_data)
                         return validated_plans
                     except json.JSONDecodeError:
                         pass
@@ -301,6 +335,50 @@ class PlanGenerator:
         """验证方案数据"""
         required_fields = ['title', 'description']
         return all(field in plan_data for field in required_fields)
+
+    def _enforce_transportation_from_data(self, plans: List[Dict[str, Any]], processed_data: Dict[str, Any]) -> None:
+        """用已收集的真实交通数据覆盖/校准 LLM 的交通字段，避免被编造。
+        - 将 processed_data['transportation'] 中的前几条写回到每个方案的 transportation
+        - 同时为 daily_itineraries 中缺失或为字符串的 transportation 填入第一条真实交通摘要
+        - 记录校准前后的距离/时长，便于排查
+        """
+        try:
+            real_transport = processed_data.get('transportation', []) or []
+            if not real_transport:
+                logger.info("无可用真实交通数据，跳过交通校准")
+                return
+            # 生成摘要函数
+            def summarize(t: Dict[str, Any]) -> str:
+                t_type = t.get('type') or '交通'
+                dist = t.get('distance')
+                dur = t.get('duration')
+                cost = t.get('price', t.get('cost'))
+                parts = [t_type]
+                if isinstance(dist, (int, float)):
+                    parts.append(f"{int(dist)}公里")
+                if isinstance(dur, (int, float)):
+                    parts.append(f"{int(dur)}分钟")
+                if isinstance(cost, (int, float)):
+                    parts.append(f"¥{int(cost)}")
+                return ' · '.join(parts)
+
+            # 选择用于填充的第一条真实交通
+            primary = real_transport[0]
+
+            for idx, p in enumerate(plans):
+                before = p.get('transportation')
+                p['transportation'] = real_transport[:3]
+                after = p['transportation']
+                logger.info(f"[Transport Calibrate] plan[{idx}] trans before={type(before).__name__} -> after={len(after)} items")
+
+                # 校准每日行程的 transportation 文本/对象
+                daily = p.get('daily_itineraries') or []
+                for d in daily:
+                    dt = d.get('transportation')
+                    if not dt or isinstance(dt, str):
+                        d['transportation'] = summarize(primary)
+        except Exception as e:
+            logger.warning(f"交通数据校准失败: {e}")
     
     def _clean_llm_response(self, response: str) -> str:
         """清理LLM响应，移除markdown标记等"""
@@ -373,6 +451,7 @@ class PlanGenerator:
      星级: {item.get('star_rating', 'N/A')}""")
             
             elif data_type == 'attraction':
+                # 增强景点信息格式化，包含百度地图的详细信息
                 formatted_items.append(f"""
   {i+1}. 景点名称: {item.get('name', 'N/A')}
      类型: {item.get('category', 'N/A')}
@@ -380,7 +459,13 @@ class PlanGenerator:
      门票价格: {item.get('price', 'N/A')}元
      评分: {item.get('rating', 'N/A')}
      地址: {item.get('address', 'N/A')}
-     开放时间: {item.get('opening_hours', 'N/A')}""")
+     开放时间: {item.get('opening_hours', 'N/A')}
+     建议游览时间: {item.get('visit_duration', 'N/A')}
+     特色标签: {', '.join(item.get('tags', []))}
+     联系方式: {item.get('phone', 'N/A')}
+     官方网站: {item.get('website', 'N/A')}
+     交通便利性: {item.get('accessibility', 'N/A')}
+     数据来源: {item.get('source', 'N/A')}""")
             
             elif data_type == 'restaurant':
                 formatted_items.append(f"""
@@ -392,14 +477,48 @@ class PlanGenerator:
      特色菜: {', '.join(item.get('specialties', []))}""")
             
             elif data_type == 'transportation':
+                # 增强交通信息格式化，包含百度地图的详细信息
                 formatted_items.append(f"""
   {i+1}. 交通方式: {item.get('type', 'N/A')}
+     名称: {item.get('name', 'N/A')}
      描述: {item.get('description', 'N/A')}
-     费用: {item.get('cost', 'N/A')}元
+     距离: {item.get('distance', 'N/A')}公里
+     耗时: {item.get('duration', 'N/A')}分钟
+     费用: {item.get('price', item.get('cost', 'N/A'))}元
+     货币: {item.get('currency', 'CNY')}
      运营时间: {item.get('operating_hours', 'N/A')}
-     路线: {item.get('route', 'N/A')}""")
+     发车频率: {item.get('frequency', 'N/A')}
+     覆盖区域: {', '.join(item.get('coverage', []))}
+     特色功能: {', '.join(item.get('features', []))}
+     路线: {item.get('route', 'N/A')}
+     数据来源: {item.get('source', 'N/A')}
+     路况信息: {self._format_traffic_info(item.get('traffic_conditions', {}))}""")
         
         return '\n'.join(formatted_items) if formatted_items else "暂无数据"
+    
+    def _format_traffic_info(self, traffic_conditions: Dict[str, Any]) -> str:
+        """格式化路况信息"""
+        if not traffic_conditions:
+            return "暂无路况信息"
+        
+        info_parts = []
+        
+        # 拥堵程度
+        congestion_level = traffic_conditions.get('congestion_level', '未知')
+        if congestion_level != '未知':
+            info_parts.append(f"拥堵程度: {congestion_level}")
+        
+        # 道路状况
+        road_conditions = traffic_conditions.get('road_conditions', [])
+        if road_conditions:
+            info_parts.append(f"道路状况: {', '.join(road_conditions)}")
+        
+        # 实时信息
+        real_time = traffic_conditions.get('real_time', False)
+        if real_time:
+            info_parts.append("实时路况: 是")
+        
+        return ', '.join(info_parts) if info_parts else "暂无路况信息"
     
     async def _generate_single_plan(
         self,

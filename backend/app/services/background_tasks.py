@@ -82,7 +82,6 @@ class BackgroundTaskManager:
                 
                 # 刷新热门目的地的数据（减少数量，避免阻塞）
                 popular_destinations = [
-                    "北京", "上海", "广州", "深圳", "杭州"
                 ]
                 
                 for destination in popular_destinations:
@@ -117,13 +116,13 @@ class BackgroundTaskManager:
                 
                 logger.info("数据刷新完成")
                 
-                # 每30分钟执行一次，避免长时间阻塞
-                await asyncio.sleep(1800)
+                # 每60分钟执行一次，避免长时间阻塞
+                await asyncio.sleep(3600)
                 
             except Exception as e:
                 logger.error(f"数据刷新任务失败: {e}")
                 # 任务失败时继续运行，避免阻塞
-                await asyncio.sleep(1800)  # 30分钟后重试
+                await asyncio.sleep(3600)  # 60分钟后重试
     
     async def health_check_task(self):
         """健康检查任务"""
@@ -190,12 +189,12 @@ class BackgroundTaskManager:
                 if disk_percent > 90:
                     logger.warning(f"磁盘使用率过高: {disk_percent}%")
                 
-                # 每2分钟执行一次
-                await asyncio.sleep(120)
+                # 每10分钟执行一次
+                await asyncio.sleep(600)
                 
             except Exception as e:
                 logger.error(f"监控任务失败: {e}")
-                await asyncio.sleep(300)  # 5分钟后重试
+                await asyncio.sleep(600)  # 10分钟后重试
     
     async def _check_database(self):
         """检查数据库连接"""

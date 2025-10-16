@@ -86,7 +86,8 @@ class OpenAIClient:
         duration_days: int, 
         budget: float,
         preferences: List[str],
-        requirements: str = ""
+        requirements: str = "",
+        map_data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """生成旅行计划"""
         try:
@@ -101,6 +102,20 @@ class OpenAIClient:
 
 请以JSON格式返回结果。"""
             
+            # 构建地图数据信息
+            map_info = ""
+            if map_data:
+                map_info = f"""
+
+百度地图数据：
+景点信息：{len(map_data.get('attractions', []))}个景点
+交通信息：{len(map_data.get('transportation', []))}种交通方式
+餐厅信息：{len(map_data.get('restaurants', []))}家餐厅
+天气信息：{map_data.get('weather', {})}
+
+请充分利用这些真实数据制定计划。
+"""
+
             user_prompt = f"""
 请为以下旅行需求制定详细计划：
 
@@ -108,15 +123,15 @@ class OpenAIClient:
 旅行天数：{duration_days}天
 预算：{budget}元
 旅行偏好：{', '.join(preferences)}
-特殊要求：{requirements}
+特殊要求：{requirements}{map_info}
 
-请生成一个完整的旅行方案。
+请生成一个完整的旅行方案，优先考虑交通便利的景点和实用的交通方式。
 """
             
             response = await self.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=4096
+                max_tokens=self.max_tokens
             )
             
             # 尝试解析JSON响应
@@ -158,7 +173,7 @@ class OpenAIClient:
             response = await self.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=1500
+                max_tokens=self.max_tokens
             )
             
             return {
@@ -196,7 +211,7 @@ class OpenAIClient:
             response = await self.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=1800
+                max_tokens=self.max_tokens
             )
             
             return {

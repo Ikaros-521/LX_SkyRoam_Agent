@@ -11,13 +11,15 @@ import httpx
 
 from app.core.config import settings
 from app.tools.mcp_client import MCPClient
+from app.tools.amap_mcp_client import AmapMCPClient
+from app.tools.city_resolver import CityResolver
 from app.tools.baidu_maps_integration import (
     map_directions, 
     map_search_places, 
     map_geocode,
     map_weather
 )
-from app.services.web_scraper import WebScraper
+# from app.services.web_scraper import WebScraper  # 已移除爬虫功能
 from app.core.redis import get_cache, set_cache, cache_key
 
 
@@ -26,11 +28,15 @@ class DataCollector:
     
     def __init__(self):
         self.mcp_client = MCPClient()
-        self.web_scraper = WebScraper()
+        self.amap_client = AmapMCPClient()
+        self.city_resolver = CityResolver()
+        # self.web_scraper = WebScraper()  # 已移除爬虫功能
         self.http_client = httpx.AsyncClient(
             timeout=30.0,
-            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            proxies={}
         )
+        self.map_provider = settings.MAP_PROVIDER  # 地图服务提供商
     
     async def collect_flight_data(
         self, 
@@ -57,12 +63,7 @@ class DataCollector:
                 origin=departure
             )
             
-            # 如果MCP数据不足，使用爬虫补充
-            if len(flight_data) < 5:
-                scraped_flights = await self.web_scraper.scrape_flights(
-                    destination, start_date, end_date
-                )
-                flight_data.extend(scraped_flights)
+            # 已移除爬虫功能，只使用MCP数据
             
             # 缓存数据
             await set_cache(cache_key_str, flight_data, ttl=300)  # 5分钟缓存
@@ -97,12 +98,7 @@ class DataCollector:
                 check_out=end_date.date()
             )
             
-            # 如果MCP数据不足，使用爬虫补充
-            if len(hotel_data) < 10:
-                scraped_hotels = await self.web_scraper.scrape_hotels(
-                    destination, start_date, end_date
-                )
-                hotel_data.extend(scraped_hotels)
+            # 已移除爬虫功能，只使用MCP数据
             
             # 缓存数据
             await set_cache(cache_key_str, hotel_data, ttl=300)  # 5分钟缓存
@@ -127,65 +123,69 @@ class DataCollector:
             
             attraction_data = []
             
-            # 优先使用内置百度地图功能
+            # 根据地图服务提供商收集景点数据
             try:
-                logger.info(f"使用内置百度地图功能收集景点数据: {destination}")
-                
-                # 搜索景点
-                places_result = await map_search_places(
-                    query="景点",
-                    region=destination,
-                    tag="风景名胜",
-                    is_china="true"
-                )
-                
-                if places_result.get("status") == 0:
-                    places = places_result.get("result", {}).get("items", [])
-                    for place in places[:10]:  # 取前10个景点
-                        attraction_item = {
-                            "name": place.get("name", "景点"),
-                            "category": "风景名胜",
-                            "description": place.get("detail_info", {}).get("tag", "热门景点"),
-                            "price": "免费" if place.get("detail_info", {}).get("price") == "0" else "收费",
-                            "rating": place.get("detail_info", {}).get("overall_rating", "4.5"),
-                            "address": place.get("address", ""),
-                            "coordinates": {
-                                "lat": place.get("location", {}).get("lat"),
-                                "lng": place.get("location", {}).get("lng")
-                            },
-                            "opening_hours": place.get("detail_info", {}).get("open_time", "全天开放"),
-                            "source": "百度地图API"
-                        }
+                if self.map_provider == "amap":
+                    logger.info(f"使用高德地图MCP服务收集景点数据: {destination}")
+                    await self._collect_amap_attraction_data(destination, attraction_data)
+                else:
+                    logger.info(f"使用百度地图功能收集景点数据: {destination}")
+                    
+                    # 搜索景点
+                    places_result = await map_search_places(
+                        query="景点",
+                        region=destination,
+                        tag="风景名胜",
+                        is_china="true"
+                    )
+                    
+                    if places_result.get("status") == 0:
+                        places = places_result.get("result", {}).get("items", [])
+                        for place in places[:10]:  # 取前10个景点
+                            attraction_item = {
+                                "name": place.get("name", "景点"),
+                                "category": "风景名胜",
+                                "description": place.get("detail_info", {}).get("tag", "热门景点"),
+                                "price": "免费" if place.get("detail_info", {}).get("price") == "0" else "收费",
+                                "rating": place.get("detail_info", {}).get("overall_rating", "4.5"),
+                                "address": place.get("address", ""),
+                                "coordinates": {
+                                    "lat": place.get("location", {}).get("lat"),
+                                    "lng": place.get("location", {}).get("lng")
+                                },
+                                "opening_hours": place.get("detail_info", {}).get("open_time", "全天开放"),
+                                "source": "百度地图API"
+                            }
                         attraction_data.append(attraction_item)
                 
-                # 搜索博物馆
-                museum_result = await map_search_places(
-                    query="博物馆",
-                    region=destination,
-                    tag="科教文化服务",
-                    is_china="true"
-                )
-                
-                if museum_result.get("status") == 0:
-                    museums = museum_result.get("result", {}).get("items", [])
-                    for museum in museums[:5]:  # 取前5个博物馆
-                        attraction_item = {
-                            "name": museum.get("name", "博物馆"),
-                            "category": "博物馆",
-                            "description": museum.get("detail_info", {}).get("tag", "文化景点"),
-                            "price": "免费" if museum.get("detail_info", {}).get("price") == "0" else "收费",
-                            "rating": museum.get("detail_info", {}).get("overall_rating", "4.3"),
-                            "address": museum.get("address", ""),
-                            "coordinates": {
-                                "lat": museum.get("location", {}).get("lat"),
-                                "lng": museum.get("location", {}).get("lng")
-                            },
-                            "opening_hours": museum.get("detail_info", {}).get("open_time", "09:00-17:00"),
-                            "source": "百度地图API"
-                        }
-                        attraction_data.append(attraction_item)
-                
-                logger.info(f"从百度地图API获取到 {len(attraction_data)} 条景点数据")
+                    # 搜索博物馆
+                    museum_result = await map_search_places(
+                        query="博物馆",
+                        region=destination,
+                        tag="科教文化服务",
+                        is_china="true"
+                    )
+                    
+                    if museum_result.get("status") == 0:
+                        museums = museum_result.get("result", {}).get("items", [])
+                        for museum in museums[:5]:  # 取前5个博物馆
+                            attraction_item = {
+                                "name": museum.get("name", "博物馆"),
+                                "category": "博物馆",
+                                "description": museum.get("detail_info", {}).get("tag", "文化景点"),
+                                "price": "免费" if museum.get("detail_info", {}).get("price") == "0" else "收费",
+                                "rating": museum.get("detail_info", {}).get("overall_rating", "4.3"),
+                                "address": museum.get("address", ""),
+                                "coordinates": {
+                                    "lat": museum.get("location", {}).get("lat"),
+                                    "lng": museum.get("location", {}).get("lng")
+                                },
+                                "opening_hours": museum.get("detail_info", {}).get("open_time", "09:00-17:00"),
+                                "source": "百度地图API"
+                            }
+                            attraction_data.append(attraction_item)
+                    
+                    logger.info(f"从百度地图API获取到 {len(attraction_data)} 条景点数据")
                 
             except Exception as e:
                 logger.warning(f"百度地图景点API调用失败: {e}")
@@ -199,14 +199,7 @@ class DataCollector:
                 except Exception as e:
                     logger.warning(f"MCP景点服务调用失败: {e}")
             
-            # 如果数据仍然不足，使用爬虫补充
-            if len(attraction_data) < 20:
-                try:
-                    scraped_attractions = await self.web_scraper.scrape_attractions(destination)
-                    attraction_data.extend(scraped_attractions)
-                    logger.info(f"从爬虫补充 {len(scraped_attractions)} 条景点数据")
-                except Exception as e:
-                    logger.warning(f"爬虫景点数据收集失败: {e}")
+            # 已移除爬虫功能，只使用百度地图和MCP数据
             
             # 缓存数据
             await set_cache(cache_key_str, attraction_data, ttl=300)  # 5分钟缓存
@@ -280,70 +273,109 @@ class DataCollector:
             
             restaurant_data = []
             
-            # 优先使用内置百度地图功能
-            try:
-                logger.info(f"使用内置百度地图功能收集餐厅数据: {destination}")
-                
-                # 搜索餐厅
-                restaurants_result = await map_search_places(
-                    query="餐厅",
-                    region=destination,
-                    tag="美食",
-                    is_china="true"
-                )
-                
-                if restaurants_result.get("status") == 0:
-                    restaurants = restaurants_result.get("result", {}).get("items", [])
-                    for restaurant in restaurants[:10]:  # 取前10个餐厅
-                        restaurant_item = {
-                            "name": restaurant.get("name", "餐厅"),
-                            "cuisine": restaurant.get("detail_info", {}).get("tag", "中餐"),
-                            "rating": restaurant.get("detail_info", {}).get("overall_rating", "4.2"),
-                            "price_range": "$$" if restaurant.get("detail_info", {}).get("price") else "$$$",
-                            "address": restaurant.get("address", ""),
-                            "coordinates": {
-                                "lat": restaurant.get("location", {}).get("lat"),
-                                "lng": restaurant.get("location", {}).get("lng")
-                            },
-                            "opening_hours": restaurant.get("detail_info", {}).get("open_time", "10:00-22:00"),
-                            "specialties": restaurant.get("detail_info", {}).get("tag", "").split(",") if restaurant.get("detail_info", {}).get("tag") else ["特色菜"],
-                            "source": "百度地图API"
-                        }
-                        restaurant_data.append(restaurant_item)
-                
-                # 搜索特色小吃
-                snack_result = await map_search_places(
-                    query="小吃",
-                    region=destination,
-                    tag="美食",
-                    is_china="true"
-                )
-                
-                if snack_result.get("status") == 0:
-                    snacks = snack_result.get("result", {}).get("items", [])
-                    for snack in snacks[:5]:  # 取前5个小吃店
-                        restaurant_item = {
-                            "name": snack.get("name", "小吃店"),
-                            "cuisine": "小吃",
-                            "rating": snack.get("detail_info", {}).get("overall_rating", "4.0"),
-                            "price_range": "$",
-                            "address": snack.get("address", ""),
-                            "coordinates": {
-                                "lat": snack.get("location", {}).get("lat"),
-                                "lng": snack.get("location", {}).get("lng")
-                            },
-                            "opening_hours": snack.get("detail_info", {}).get("open_time", "08:00-20:00"),
-                            "specialties": ["特色小吃"],
-                            "source": "百度地图API"
-                        }
-                        restaurant_data.append(restaurant_item)
-                
-                logger.info(f"从百度地图API获取到 {len(restaurant_data)} 条餐厅数据")
-                
-            except Exception as e:
-                logger.warning(f"百度地图餐厅API调用失败: {e}")
+            # 根据配置选择餐厅数据源
+            restaurant_source = settings.RESTAURANT_DATA_SOURCE
             
-            # 如果百度地图数据不足，使用MCP工具补充
+            if restaurant_source in ["baidu", "both"]:
+                # 使用内置百度地图功能
+                try:
+                    logger.info(f"使用内置百度地图功能收集餐厅数据: {destination}")
+                    
+                    # 搜索餐厅
+                    restaurants_result = await map_search_places(
+                        query="餐厅",
+                        region=destination,
+                        tag="美食",
+                        is_china="true"
+                    )
+                    
+                    if restaurants_result.get("status") == 0:
+                        restaurants = restaurants_result.get("result", {}).get("items", [])
+                        for restaurant in restaurants[:10]:  # 取前10个餐厅
+                            restaurant_item = {
+                                "name": restaurant.get("name", "餐厅"),
+                                "cuisine": restaurant.get("detail_info", {}).get("tag", "中餐"),
+                                "rating": restaurant.get("detail_info", {}).get("overall_rating", "4.2"),
+                                "price_range": "$$" if restaurant.get("detail_info", {}).get("price") else "$$$",
+                                "address": restaurant.get("address", ""),
+                                "coordinates": {
+                                    "lat": restaurant.get("location", {}).get("lat"),
+                                    "lng": restaurant.get("location", {}).get("lng")
+                                },
+                                "opening_hours": restaurant.get("detail_info", {}).get("open_time", "10:00-22:00"),
+                                "specialties": restaurant.get("detail_info", {}).get("tag", "").split(",") if restaurant.get("detail_info", {}).get("tag") else ["特色菜"],
+                                "source": "百度地图API"
+                            }
+                            restaurant_data.append(restaurant_item)
+                    
+                    # 搜索特色小吃
+                    snack_result = await map_search_places(
+                        query="小吃",
+                        region=destination,
+                        tag="美食",
+                        is_china="true"
+                    )
+                    
+                    if snack_result.get("status") == 0:
+                        snacks = snack_result.get("result", {}).get("items", [])
+                        for snack in snacks[:5]:  # 取前5个小吃店
+                            restaurant_item = {
+                                "name": snack.get("name", "小吃店"),
+                                "cuisine": "小吃",
+                                "rating": snack.get("detail_info", {}).get("overall_rating", "4.0"),
+                                "price_range": "$",
+                                "address": snack.get("address", ""),
+                                "coordinates": {
+                                    "lat": snack.get("location", {}).get("lat"),
+                                    "lng": snack.get("location", {}).get("lng")
+                                },
+                                "opening_hours": snack.get("detail_info", {}).get("open_time", "08:00-20:00"),
+                                "specialties": ["特色小吃"],
+                                "source": "百度地图API"
+                            }
+                            restaurant_data.append(restaurant_item)
+                    
+                    logger.info(f"从百度地图API获取到 {len(restaurant_data)} 条餐厅数据")
+                    
+                except Exception as e:
+                    logger.warning(f"百度地图餐厅API调用失败: {e}")
+            
+            if restaurant_source in ["amap", "both"]:
+                # 使用高德地图周边搜索
+                try:
+                    logger.info(f"使用高德地图周边搜索收集餐厅数据: {destination}")
+                    
+                    # 搜索餐厅 - 使用智能城市名解析
+                    city_name = await self.city_resolver.resolve_city(destination)
+                    amap_restaurants = await self.amap_client.search_places(
+                        query="餐厅",
+                        city=city_name,
+                        category="餐厅"
+                    )
+                    
+                    for amap_restaurant in amap_restaurants[:10]:  # 取前10个餐厅
+                        restaurant_item = {
+                            "name": amap_restaurant.get("name", "餐厅"),
+                            "cuisine": amap_restaurant.get("category", "中餐"),
+                            "rating": amap_restaurant.get("rating", 4.0),
+                            "price_range": "$$",
+                            "address": amap_restaurant.get("address", ""),
+                            "coordinates": {
+                                "lat": amap_restaurant.get("coordinates", {}).get("lat"),
+                                "lng": amap_restaurant.get("coordinates", {}).get("lng")
+                            },
+                            "opening_hours": amap_restaurant.get("opening_hours", "10:00-22:00"),
+                            "specialties": amap_restaurant.get("tags", ["特色菜"]),
+                            "source": "高德地图API"
+                        }
+                        restaurant_data.append(restaurant_item)
+                    
+                    logger.info(f"从高德地图API获取到 {len(amap_restaurants)} 条餐厅数据")
+                    
+                except Exception as e:
+                    logger.warning(f"高德地图餐厅API调用失败: {e}")
+            
+            # 如果数据仍然不足，使用MCP工具补充
             if len(restaurant_data) < 10:
                 try:
                     mcp_data = await self.mcp_client.get_restaurants(destination)
@@ -352,14 +384,7 @@ class DataCollector:
                 except Exception as e:
                     logger.warning(f"MCP餐厅服务调用失败: {e}")
             
-            # 如果数据仍然不足，使用爬虫补充
-            if len(restaurant_data) < 15:
-                try:
-                    scraped_restaurants = await self.web_scraper.scrape_restaurants(destination)
-                    restaurant_data.extend(scraped_restaurants)
-                    logger.info(f"从爬虫补充 {len(scraped_restaurants)} 条餐厅数据")
-                except Exception as e:
-                    logger.warning(f"爬虫餐厅数据收集失败: {e}")
+            # 已移除爬虫功能，只使用百度地图和MCP数据
             
             # 缓存数据
             await set_cache(cache_key_str, restaurant_data, ttl=300)  # 5分钟缓存
@@ -387,28 +412,32 @@ class DataCollector:
             
             transport_data = []
             
-            # 根据用户选择的出行方式获取相应的交通数据
+            # 根据地图服务提供商获取交通数据
             try:
-                logger.info(f"使用内置百度地图功能收集交通数据: {destination}, 出行方式: {transportation_mode or '混合'}")
-                
-                # 根据出行方式收集不同的交通数据
-                if transportation_mode == "car":
-                    # 自驾出行，获取驾车路线
-                    await self._collect_driving_data(departure, destination, transport_data)
-                elif transportation_mode == "flight":
-                    # 飞机出行，获取机场交通信息
-                    await self._collect_flight_transport_data(departure, destination, transport_data)
-                elif transportation_mode == "train":
-                    # 火车出行，获取火车站交通信息
-                    await self._collect_train_transport_data(departure, destination, transport_data)
-                elif transportation_mode == "bus":
-                    # 大巴出行，获取长途汽车站交通信息
-                    await self._collect_bus_transport_data(departure, destination, transport_data)
+                if self.map_provider == "amap":
+                    logger.info(f"使用高德地图MCP服务收集交通数据: {destination}, 出行方式: {transportation_mode or '混合'}")
+                    await self._collect_amap_transportation_data(departure, destination, transport_data, transportation_mode)
                 else:
-                    # 未指定或混合交通，收集所有交通方式
-                    await self._collect_mixed_transport_data(departure, destination, transport_data)
+                    logger.info(f"使用百度地图功能收集交通数据: {destination}, 出行方式: {transportation_mode or '混合'}")
+                    
+                    # 根据出行方式收集不同的交通数据
+                    if transportation_mode == "car":
+                        # 自驾出行，获取驾车路线
+                        await self._collect_driving_data(departure, destination, transport_data)
+                    elif transportation_mode == "flight":
+                        # 飞机出行，获取机场交通信息
+                        await self._collect_flight_transport_data(departure, destination, transport_data)
+                    elif transportation_mode == "train":
+                        # 火车出行，获取火车站交通信息
+                        await self._collect_train_transport_data(departure, destination, transport_data)
+                    elif transportation_mode == "bus":
+                        # 大巴出行，获取长途汽车站交通信息
+                        await self._collect_bus_transport_data(departure, destination, transport_data)
+                    else:
+                        # 未指定或混合交通，收集所有交通方式
+                        await self._collect_mixed_transport_data(departure, destination, transport_data)
                 
-                logger.info(f"从百度地图API获取到 {len(transport_data)} 条交通数据")
+                logger.info(f"从{self.map_provider}地图API获取到 {len(transport_data)} 条交通数据")
                 
             except Exception as e:
                 error_msg = str(e)
@@ -420,23 +449,18 @@ class DataCollector:
                     logger.warning(f"百度地图API调用失败: {e}")
                     # API失败时，不提供模拟数据，宁缺毋滥
             
-            # 如果百度地图数据不足，使用MCP工具补充
-            if len(transport_data) < 5:
+            # 如果高德地图数据不足，使用MCP工具补充
+            if len(transport_data) < 5 and self.map_provider != "amap":
                 try:
                     mcp_data = await self.mcp_client.get_transportation(departure, destination)
                     transport_data.extend(mcp_data)
                     logger.info(f"从MCP服务补充 {len(mcp_data)} 条交通数据")
                 except Exception as e:
                     logger.warning(f"MCP服务调用失败: {e}")
+            elif len(transport_data) < 5:
+                logger.info(f"高德地图已获取到 {len(transport_data)} 条数据，跳过MCP补充")
             
-            # 如果数据仍然不足，使用爬虫补充
-            if len(transport_data) < 10:
-                try:
-                    scraped_transport = await self.web_scraper.scrape_transportation(destination)
-                    transport_data.extend(scraped_transport)
-                    logger.info(f"从爬虫补充 {len(scraped_transport)} 条交通数据")
-                except Exception as e:
-                    logger.warning(f"爬虫数据收集失败: {e}")
+            # 已移除爬虫功能，只使用百度地图和MCP数据
             
             # 缓存数据 - 交通信息瞬息万变，缩短缓存时间
             await set_cache(cache_key_str, transport_data, ttl=1800)  # 30分钟缓存
@@ -776,7 +800,81 @@ class DataCollector:
             
         except Exception as e:
             logger.warning(f"添加跨城替代方案失败: {e}")
+    
+    async def _collect_amap_transportation_data(
+        self, 
+        departure: str, 
+        destination: str, 
+        transport_data: List[Dict[str, Any]], 
+        transportation_mode: Optional[str] = None
+    ):
+        """使用高德地图MCP服务收集交通数据"""
+        try:
+            # 根据出行方式选择路线规划模式
+            if transportation_mode == "car":
+                mode = "driving"
+            elif transportation_mode == "transit":
+                mode = "transit"
+            else:
+                mode = "transit"  # 默认使用公共交通
+            
+            # 获取路线规划数据
+            amap_routes = await self.amap_client.get_directions(
+                origin=departure,
+                destination=destination,
+                mode=mode
+            )
+            
+            if amap_routes:
+                transport_data.extend(amap_routes)
+                logger.info(f"从高德地图MCP获取到 {len(amap_routes)} 条交通数据")
+            
+            # 如果数据不足，添加替代方案
+            if len(transport_data) < 3:
+                await self._add_intercity_alternatives(departure, destination, transport_data)
+                
+        except Exception as e:
+            logger.warning(f"高德地图交通数据收集失败: {e}")
+            # 失败时添加替代方案
+            await self._add_intercity_alternatives(departure, destination, transport_data)
+    
+    async def _collect_amap_attraction_data(
+        self, 
+        destination: str, 
+        attraction_data: List[Dict[str, Any]]
+    ):
+        """使用高德地图MCP服务收集景点数据"""
+        try:
+            # 使用智能城市名解析
+            city_name = await self.city_resolver.resolve_city(destination)
+            
+            # 搜索景点
+            attractions = await self.amap_client.search_places(
+                query="景点",
+                city=city_name,
+                category="景点"
+            )
+            
+            if attractions:
+                attraction_data.extend(attractions)
+                logger.info(f"从高德地图MCP获取到 {len(attractions)} 条景点数据")
+            
+            # 搜索博物馆
+            museums = await self.amap_client.search_places(
+                query="博物馆",
+                city=city_name,
+                category="景点"
+            )
+            
+            if museums:
+                attraction_data.extend(museums)
+                logger.info(f"从高德地图MCP获取到 {len(museums)} 条博物馆数据")
+                
+        except Exception as e:
+            logger.warning(f"高德地图景点数据收集失败: {e}")
+
 
     async def close(self):
         """关闭HTTP客户端"""
         await self.http_client.aclose()
+        await self.city_resolver.close()

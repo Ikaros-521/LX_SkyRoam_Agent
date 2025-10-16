@@ -67,7 +67,7 @@ async def map_directions(
                 "from": "lx_skyroam"
             }
             
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, proxies={}) as client:
                 geocode_response = await client.get(geocode_url, params=geocode_params)
                 geocode_response.raise_for_status()
                 geocode_result = geocode_response.json()
@@ -89,7 +89,7 @@ async def map_directions(
                 "from": "lx_skyroam"
             }
             
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, proxies={}) as client:
                 geocode_response = await client.get(geocode_url, params=geocode_params)
                 geocode_response.raise_for_status()
                 geocode_result = geocode_response.json()
@@ -128,7 +128,7 @@ async def map_directions(
                 "from": "lx_skyroam"
             }
         
-        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30.0, verify=False, proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -156,7 +156,14 @@ async def map_directions(
             print(f"请求URL: {url}")
         if 'params' in locals():
             print(f"请求参数: {mask_api_key(str(params))}")
-        raise Exception(error_msg) from e
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP请求失败: 连接错误，可能是网络问题或API地址无效。请检查网络连接和API配置。"
+            print(f"详细错误: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except Exception as e:
         error_msg = f"路线规划异常: {str(e)}"
         print(f"百度地图路线规划异常: {error_msg}")
@@ -200,7 +207,7 @@ async def map_search_places(
             else:
                 params["region"] = region
         
-        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30.0, verify=False, proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -212,9 +219,24 @@ async def map_search_places(
             return result
             
     except httpx.HTTPError as e:
-        raise Exception(f"HTTP请求失败: {str(e)}") from e
+        error_msg = f"HTTP请求失败: {str(e)}"
+        print(f"百度地图API请求失败: {error_msg}")
+        if 'url' in locals():
+            print(f"请求URL: {url}")
+        if 'params' in locals():
+            print(f"请求参数: {mask_api_key(str(params))}")
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP请求失败: 连接错误，可能是网络问题或API地址无效。请检查网络连接和API配置。"
+            print(f"详细错误: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except Exception as e:
-        raise Exception(f"地点搜索异常: {str(e)}") from e
+        error_msg = f"地点搜索异常: {str(e)}"
+        print(f"百度地图地点搜索异常: {error_msg}")
+        raise Exception(error_msg) from e
 
 async def map_geocode(address: str, is_china: str = "true") -> Dict[str, Any]:
     """
@@ -229,7 +251,7 @@ async def map_geocode(address: str, is_china: str = "true") -> Dict[str, Any]:
             "from": "lx_skyroam"
         }
         
-        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30.0, verify=False, proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -241,9 +263,24 @@ async def map_geocode(address: str, is_china: str = "true") -> Dict[str, Any]:
             return result
             
     except httpx.HTTPError as e:
-        raise Exception(f"HTTP请求失败: {str(e)}") from e
+        error_msg = f"HTTP请求失败: {str(e)}"
+        print(f"百度地图API请求失败: {error_msg}")
+        if 'url' in locals():
+            print(f"请求URL: {url}")
+        if 'params' in locals():
+            print(f"请求参数: {mask_api_key(str(params))}")
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP请求失败: 连接错误，可能是网络问题或API地址无效。请检查网络连接和API配置。"
+            print(f"详细错误: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except Exception as e:
-        raise Exception(f"地理编码异常: {str(e)}") from e
+        error_msg = f"地理编码异常: {str(e)}"
+        print(f"百度地图地理编码异常: {error_msg}")
+        raise Exception(error_msg) from e
 
 async def map_reverse_geocode(latitude: float, longitude: float) -> Dict[str, Any]:
     """
@@ -261,7 +298,7 @@ async def map_reverse_geocode(latitude: float, longitude: float) -> Dict[str, An
             "from": "lx_skyroam"
         }
         
-        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30.0, verify=False, proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -273,9 +310,24 @@ async def map_reverse_geocode(latitude: float, longitude: float) -> Dict[str, An
             return result
             
     except httpx.HTTPError as e:
-        raise Exception(f"HTTP请求失败: {str(e)}") from e
+        error_msg = f"HTTP请求失败: {str(e)}"
+        print(f"百度地图API请求失败: {error_msg}")
+        if 'url' in locals():
+            print(f"请求URL: {url}")
+        if 'params' in locals():
+            print(f"请求参数: {mask_api_key(str(params))}")
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP请求失败: 连接错误，可能是网络问题或API地址无效。请检查网络连接和API配置。"
+            print(f"详细错误: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except Exception as e:
-        raise Exception(f"逆地理编码异常: {str(e)}") from e
+        error_msg = f"逆地理编码异常: {str(e)}"
+        print(f"百度地图逆地理编码异常: {error_msg}")
+        raise Exception(error_msg) from e
 
 async def map_weather(location: str = "", district_id: str = "", is_china: str = "true") -> Dict[str, Any]:
     """
@@ -294,7 +346,7 @@ async def map_weather(location: str = "", district_id: str = "", is_china: str =
         else:
             params["location"] = location
         
-        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30.0, verify=False, proxies={}) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             result = response.json()
@@ -306,9 +358,24 @@ async def map_weather(location: str = "", district_id: str = "", is_china: str =
             return result
             
     except httpx.HTTPError as e:
-        raise Exception(f"HTTP请求失败: {str(e)}") from e
+        error_msg = f"HTTP请求失败: {str(e)}"
+        print(f"百度地图API请求失败: {error_msg}")
+        if 'url' in locals():
+            print(f"请求URL: {url}")
+        if 'params' in locals():
+            print(f"请求参数: {mask_api_key(str(params))}")
+        # 确保错误信息完整
+        if str(e):
+            raise Exception(error_msg) from e
+        else:
+            # 如果错误描述为空，提供更具体的错误信息
+            conn_error_msg = f"HTTP请求失败: 连接错误，可能是网络问题或API地址无效。请检查网络连接和API配置。"
+            print(f"详细错误: {conn_error_msg}")
+            raise Exception(conn_error_msg) from e
     except Exception as e:
-        raise Exception(f"天气查询异常: {str(e)}") from e
+        error_msg = f"天气查询异常: {str(e)}"
+        print(f"百度地图天气查询异常: {error_msg}")
+        raise Exception(error_msg) from e
 
 # 工具函数映射
 TOOL_FUNCTIONS = {
