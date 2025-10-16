@@ -31,7 +31,7 @@ const TestPage: React.FC = () => {
           
           <Title level={2} style={{ color: '#52c41a', margin: 0 }}>
             <RocketOutlined style={{ marginRight: '12px' }} />
-            洛曦 云游Agent
+            洛曦 云旅Agent
           </Title>
           
           <Title level={3} style={{ color: '#1890ff', margin: 0 }}>

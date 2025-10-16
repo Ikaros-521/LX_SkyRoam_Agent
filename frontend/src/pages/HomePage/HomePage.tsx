@@ -82,7 +82,7 @@ const HomePage: React.FC = () => {
         <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
           <Title level={1} style={{ color: 'white', marginBottom: '16px' }}>
             <RocketOutlined style={{ marginRight: '16px' }} />
-            洛曦 云游Agent
+            洛曦 云旅Agent
           </Title>
           <Title level={2} style={{ color: 'white', fontWeight: 'normal', marginBottom: '24px' }}>
             您的智能旅行规划助手
