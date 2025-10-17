@@ -33,7 +33,7 @@ def cache_cleanup_task():
     try:
         logger.info("开始执行缓存清理任务")
         
-        from app.core.redis import clear_cache_pattern
+        from app.core.redis import clear_cache_pattern_sync
         
         # 清理过期的缓存
         patterns = [
@@ -47,7 +47,7 @@ def cache_cleanup_task():
         
         total_cleared = 0
         for pattern in patterns:
-            cleared = await clear_cache_pattern(pattern)
+            cleared = clear_cache_pattern_sync(pattern)
             total_cleared += cleared
         
         return {

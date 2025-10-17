@@ -26,7 +26,7 @@ interface MapComponentProps {
 }
 
 const MapComponent: React.FC<MapComponentProps> = ({
-  destination = '北京',
+  destination = '目的地',
   latitude = 39.9042,
   longitude = 116.4074,
   title = '目的地地图'

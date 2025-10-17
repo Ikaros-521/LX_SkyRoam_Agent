@@ -129,3 +129,20 @@ async def clear_cache_pattern(pattern: str):
     except Exception as e:
         logger.error(f"清除缓存失败: {e}")
         return 0
+
+
+def clear_cache_pattern_sync(pattern: str):
+    """清除匹配模式的缓存 (同步版本，用于Celery任务)"""
+    import asyncio
+    try:
+        # 在同步环境中运行异步函数
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(clear_cache_pattern(pattern))
+            return result
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.error(f"清除缓存失败 (同步版本): {e}")
+        return 0

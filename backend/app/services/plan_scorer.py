@@ -95,20 +95,36 @@ class PlanScorer:
             # 收集所有评分
             hotel = plan.get("hotel") or {}
             if hotel.get("rating"):
-                ratings.append(hotel["rating"])
+                try:
+                    rating = float(hotel["rating"])
+                    ratings.append(rating)
+                except (ValueError, TypeError):
+                    pass
             
             flight = plan.get("flight") or {}
             if flight.get("rating"):
-                ratings.append(flight["rating"])
+                try:
+                    rating = float(flight["rating"])
+                    ratings.append(rating)
+                except (ValueError, TypeError):
+                    pass
             
             for day in plan.get("daily_itineraries", []):
                 for attraction in day.get("attractions", []):
                     if attraction.get("rating"):
-                        ratings.append(attraction["rating"])
+                        try:
+                            rating = float(attraction["rating"])
+                            ratings.append(rating)
+                        except (ValueError, TypeError):
+                            pass
             
             for restaurant in plan.get("restaurants", []):
                 if restaurant.get("rating"):
-                    ratings.append(restaurant["rating"])
+                    try:
+                        rating = float(restaurant["rating"])
+                        ratings.append(rating)
+                    except (ValueError, TypeError):
+                        pass
             
             if not ratings:
                 return 0.5  # 默认评分

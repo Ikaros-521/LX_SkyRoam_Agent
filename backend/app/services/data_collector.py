@@ -38,6 +38,64 @@ class DataCollector:
         )
         self.map_provider = settings.MAP_PROVIDER  # 地图服务提供商
     
+    async def get_destination_geocode_info(self, destination: str) -> Optional[Dict[str, Any]]:
+        """
+        统一的地理编码获取函数
+        优先使用高德地图，失败时回退到百度地图
+        返回标准化的目的地地理信息
+        """
+        try:
+            logger.info(f"获取目的地地理编码信息: {destination}")
+            
+            # 首先尝试使用高德地图地理编码
+            try:
+                amap_coords = await self.amap_client.geocode(destination)
+                if amap_coords and amap_coords.get('lng') and amap_coords.get('lat'):
+                    logger.info(f"高德地图地理编码成功: {destination}")
+                    return {
+                        'destination': destination,
+                        'latitude': float(amap_coords['lat']),
+                        'longitude': float(amap_coords['lng']),
+                        'location_string': f"{amap_coords['lng']},{amap_coords['lat']}",  # 高德格式：经度,纬度
+                        'provider': 'amap',
+                        'formatted_address': amap_coords.get('formatted_address', destination),
+                        'city': amap_coords.get('city', ''),
+                        'district': amap_coords.get('district', ''),
+                        'province': amap_coords.get('province', '')
+                    }
+            except Exception as e:
+                logger.warning(f"高德地图地理编码失败: {destination}, 错误: {e}")
+            
+            # 回退到百度地图地理编码
+            try:
+                from app.tools.baidu_maps_integration import map_geocode
+                baidu_result = await map_geocode(destination)
+                
+                if baidu_result.get("status") == 0:
+                    location_info = baidu_result.get("result", {}).get("location", {})
+                    if location_info and location_info.get('lng') and location_info.get('lat'):
+                        logger.info(f"百度地图地理编码成功: {destination}")
+                        return {
+                            'destination': destination,
+                            'latitude': float(location_info['lat']),
+                            'longitude': float(location_info['lng']),
+                            'location_string': f"{location_info['lng']},{location_info['lat']}",  # 经度,纬度格式
+                            'provider': 'baidu',
+                            'formatted_address': baidu_result.get("result", {}).get("formatted_address", destination),
+                            'city': '',  # 百度地图返回的结构可能不同，需要进一步解析
+                            'district': '',
+                            'province': ''
+                        }
+            except Exception as e:
+                logger.warning(f"百度地图地理编码失败: {destination}, 错误: {e}")
+            
+            logger.error(f"所有地理编码服务都失败: {destination}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"获取地理编码信息时发生错误: {destination}, 错误: {e}")
+            return None
+    
     async def collect_flight_data(
         self, 
         departure: str,
@@ -131,10 +189,10 @@ class DataCollector:
             
             # 优先使用高德地图周边搜索获取酒店信息
             try:
-                # 获取目的地坐标
-                destination_coords = await self.amap_client.geocode(destination)
-                if destination_coords:
-                    location = f"{destination_coords['lng']},{destination_coords['lat']}"
+                # 使用统一的地理编码函数获取目的地坐标
+                geocode_info = await self.get_destination_geocode_info(destination)
+                if geocode_info:
+                    location = geocode_info['location_string']
                     
                     # 使用高德地图周边搜索酒店
                     amap_hotels = await self.amap_client.search_places_around(
@@ -540,13 +598,13 @@ class DataCollector:
                 try:
                     logger.info(f"使用高德地图周边搜索收集餐厅数据: {destination}")
                     
-                    # 使用高德地图地理编码获取中心点坐标
-                    destination_coords = await self.amap_client.geocode(destination)
+                    # 使用统一的地理编码函数获取中心点坐标
+                    geocode_info = await self.get_destination_geocode_info(destination)
                     
                     center_location = None
-                    if destination_coords:
-                        # 高德地图坐标格式 (经度,纬度)
-                        center_location = f"{destination_coords['lng']},{destination_coords['lat']}"
+                    if geocode_info:
+                        # 使用统一格式的坐标字符串
+                        center_location = geocode_info['location_string']
                     
                     if center_location:
                         # 使用周边搜索获取餐厅数据
@@ -1081,16 +1139,13 @@ class DataCollector:
             # 首先获取目的地的坐标
             city_name = await self.city_resolver.resolve_city(destination)
             
-            # 使用百度地图地理编码获取中心点坐标
-            from app.tools.baidu_maps_integration import map_geocode
-            geocode_result = await map_geocode(destination)
+            # 使用统一的地理编码函数获取中心点坐标
+            geocode_info = await self.get_destination_geocode_info(destination)
             
             center_location = None
-            if geocode_result.get("status") == 0:
-                location_info = geocode_result.get("result", {}).get("location", {})
-                if location_info:
-                    # 百度地图坐标转高德地图坐标格式 (经度,纬度)
-                    center_location = f"{location_info.get('lng')},{location_info.get('lat')}"
+            if geocode_info:
+                # 使用统一格式的坐标字符串
+                center_location = geocode_info['location_string']
             
             if center_location:
                 # 使用周边搜索获取景点数据

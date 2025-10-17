@@ -3,7 +3,7 @@ API v1 路由汇总
 """
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map
+from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection
 
 api_router = APIRouter()
 
@@ -42,4 +42,10 @@ api_router.include_router(
     map.router, 
     prefix="/map", 
     tags=["map"]
+)
+
+api_router.include_router(
+    data_collection.router, 
+    prefix="/data-collection", 
+    tags=["data-collection"]
 )

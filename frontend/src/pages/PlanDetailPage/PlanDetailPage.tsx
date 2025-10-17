@@ -777,9 +777,9 @@ const PlanDetailPage: React.FC = () => {
             <Row style={{ marginTop: '24px' }}>
               <Col span={24}>
                 <MapComponent 
-                  destination={currentPlan.destination}
-                  latitude={currentPlan.selected_plan?.destination_info?.latitude || 39.9042}
-                  longitude={currentPlan.selected_plan?.destination_info?.longitude || 116.4074}
+                  destination={currentPlan?.destination || planDetail?.destination}
+                  latitude={currentPlan.destination_info?.latitude || 39.9042}
+                  longitude={currentPlan.destination_info?.longitude || 116.4074}
                   title="目的地地图"
                 />
               </Col>

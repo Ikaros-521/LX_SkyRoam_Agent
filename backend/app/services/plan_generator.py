@@ -19,6 +19,16 @@ class PlanGenerator:
         self.max_plans = 5
         self.min_attractions_per_day = 2
         self.max_attractions_per_day = 4
+        # 延迟导入避免循环依赖
+        self._data_collector = None
+    
+    @property
+    def data_collector(self):
+        """延迟初始化data_collector"""
+        if self._data_collector is None:
+            from app.services.data_collector import DataCollector
+            self._data_collector = DataCollector()
+        return self._data_collector
     
     async def generate_plans(
         self, 
@@ -115,12 +125,12 @@ class PlanGenerator:
         
         # 如果同时有文化和自然偏好，使用拆分策略
         if has_culture and has_nature:
-            logger.info("检测到文化和自然偏好冲突，使用拆分策略")
+            logger.info("[计划生成器] 检测到文化和自然偏好冲突，使用拆分策略")
             return True
         
         # 如果同时有美食和购物偏好，使用拆分策略
         if has_food and has_shopping:
-            logger.info("检测到美食和购物偏好冲突，使用拆分策略")
+            logger.info("[计划生成器] 检测到美食和购物偏好冲突，使用拆分策略")
             return True
         
         return False
@@ -211,9 +221,9 @@ class PlanGenerator:
             # 优先保留前三个偏好组
             preference_groups = preference_groups[:max_groups]
         
-        logger.info(f"偏好分组结果: {len(preference_groups)} 个组")
+        logger.info(f"[计划生成器] 偏好分组结果: {len(preference_groups)} 个组")
         for i, group in enumerate(preference_groups):
-            logger.info(f"组 {i+1}: {group.get('focus', 'unknown')} - {group.get('activity_preference', 'none')}")
+            logger.info(f"[计划生成器] 组 {i+1}: {group.get('focus', 'unknown')} - {group.get('activity_preference', 'none')}")
         
         return preference_groups
 
@@ -226,7 +236,7 @@ class PlanGenerator:
     ) -> List[Dict[str, Any]]:
         """使用拆分偏好策略生成方案"""
         try:
-            logger.info("开始使用拆分偏好策略生成方案")
+            logger.info("[计划生成器] 开始使用拆分偏好策略生成方案")
             
             # 将偏好分组
             preference_groups = self._group_preferences_by_compatibility(preferences)
@@ -235,7 +245,7 @@ class PlanGenerator:
             
             # 为每个偏好组生成方案
             for i, pref_group in enumerate(preference_groups):
-                logger.info(f"为偏好组 {i+1}/{len(preference_groups)} 生成方案: {pref_group.get('focus', 'unknown')}")
+                logger.info(f"[计划生成器] 为偏好组 {i+1}/{len(preference_groups)} 生成方案: {pref_group.get('focus', 'unknown')}")
                 
                 try:
                     # 为单个偏好组生成1-2个方案
@@ -250,22 +260,22 @@ class PlanGenerator:
                             plan_data['preference_group'] = i + 1
                         
                         all_plans.extend(group_plans)
-                        logger.info(f"偏好组 {i+1} 生成了 {len(group_plans)} 个方案")
+                        logger.info(f"[计划生成器] 偏好组 {i+1} 生成了 {len(group_plans)} 个方案")
                     else:
-                        logger.warning(f"偏好组 {i+1} 未能生成方案")
+                        logger.warning(f"[计划生成器] 偏好组 {i+1} 未能生成方案")
                 
                 except Exception as e:
-                    logger.error(f"偏好组 {i+1} 生成失败: {e}")
+                    logger.error(f"[计划生成器] 偏好组 {i+1} 生成失败: {e}")
                     continue
             
             # 合并和去重
             merged_plans = self._merge_and_deduplicate_plans(all_plans)
             
-            logger.info(f"拆分生成完成，总共生成 {len(merged_plans)} 个方案")
+            logger.info(f"[计划生成器] 拆分生成完成，总共生成 {len(merged_plans)} 个方案")
             return merged_plans
             
         except Exception as e:
-            logger.error(f"拆分偏好生成失败: {e}")
+            logger.error(f"[计划生成器] 拆分偏好生成失败: {e}")
             return []
 
     async def _generate_plans_for_single_preference(
@@ -379,12 +389,6 @@ class PlanGenerator:
     }},
     "weather_info": {{
       "travel_recommendations": ["基于天气的旅游建议1", "建议2"]
-    }},
-    "destination_info": {{
-      "name": "目的地名称",
-      "latitude": 纬度,
-      "longitude": 经度,
-      "source": "数据来源"
     }},
     "duration_days": 天数,
     "generated_at": "生成时间"
@@ -702,12 +706,6 @@ class PlanGenerator:
       "weather_info": {
         "travel_recommendations": ["基于天气的旅游建议1", "建议2"]
       },
-      "destination_info": {
-        "name": "目的地名称",
-        "latitude": 纬度,
-        "longitude": 经度,
-        "source": "数据来源"
-      },
       "duration_days": 天数,
       "generated_at": "生成时间"
     }
@@ -775,7 +773,6 @@ class PlanGenerator:
 17. 针对年龄群体({', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'})调整景点选择和活动强度
 18. 严格遵守饮食禁忌({', '.join(getattr(plan, 'dietaryRestrictions', [])) if getattr(plan, 'dietaryRestrictions', None) else '无饮食禁忌'})，避免推荐相关食物
 19. 优先推荐符合饮食偏好({', '.join(getattr(plan, 'foodPreferences', [])) if getattr(plan, 'foodPreferences', None) else '无特殊偏好'})的餐厅和菜系
-20. 在destination_info中填入目的地的准确坐标信息，优先使用景点数据中的坐标，如果没有则使用酒店或餐厅的坐标
 
 请直接返回JSON格式的结果，不要添加任何其他文本。
 """
@@ -844,7 +841,7 @@ class PlanGenerator:
                     
                     # 添加目的地坐标信息
                     if 'destination_info' not in plan_data:
-                        plan_data['destination_info'] = self._extract_destination_info(processed_data, plan.destination)
+                        plan_data['destination_info'] = await self._extract_destination_info(processed_data, plan.destination)
                         logger.info(f"目的地信息 {plan.id}: {plan_data['destination_info']}")
 
                 # 为每个方案添加原始酒店数据
@@ -1246,7 +1243,7 @@ class PlanGenerator:
             weather_info = self._format_weather_info(processed_data.get("weather", {}))
             
             # 获取目的地坐标信息
-            destination_info = self._extract_destination_info(processed_data, plan.destination)
+            destination_info = await self._extract_destination_info(processed_data, plan.destination)
             
             plan_data = {
                 "id": f"plan_{plan_index}",
@@ -1531,10 +1528,25 @@ class PlanGenerator:
         
         return recommendations
     
-    def _extract_destination_info(self, processed_data: Dict[str, Any], destination: str) -> Dict[str, Any]:
+    async def _extract_destination_info(self, processed_data: Dict[str, Any], destination: str) -> Dict[str, Any]:
         """提取目的地坐标信息"""
         try:
-            # 从处理后的数据中提取坐标信息
+            # 优先使用data_collector的统一地理编码函数获取准确坐标
+            try:
+                geocode_info = await self.data_collector.get_destination_geocode_info(destination)
+                if geocode_info:
+                    logger.info(f"使用统一地理编码获取目的地坐标: {destination}")
+                    return {
+                        "name": geocode_info['destination'],
+                        "latitude": geocode_info['latitude'],
+                        "longitude": geocode_info['longitude'],
+                        "source": f"geocode_{geocode_info['provider']}",
+                        "formatted_address": geocode_info.get('formatted_address', destination)
+                    }
+            except Exception as e:
+                logger.warning(f"统一地理编码获取失败，回退到从数据中提取: {e}")
+            
+            # 回退方案：从处理后的数据中提取坐标信息
             # 首先尝试从景点数据中获取坐标（景点通常在目的地附近）
             attractions = processed_data.get("attractions", [])
             if attractions:

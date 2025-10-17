@@ -9,28 +9,49 @@ from loguru import logger
 
 
 @celery_app.task
-def collect_destination_data_task(destination: str):
-    """收集目的地数据任务"""
+def collect_destination_data_task(
+    origin: str,
+    destination: str, 
+    departure_date: str = None,
+    return_date: str = None,
+    transportation_type: str = "mixed"
+):
+    """
+    收集目的地数据任务
+    
+    Args:
+        origin: 出发地
+        destination: 目的地
+        departure_date: 出发日期 (YYYY-MM-DD格式)
+        return_date: 返回日期 (YYYY-MM-DD格式，可选)
+        transportation_type: 交通方式 ("flight", "train", "mixed")
+    """
     try:
-        logger.info(f"开始收集目的地数据: {destination}")
+        logger.info(f"开始收集目的地数据: {origin} -> {destination}")
+        logger.info(f"出发日期: {departure_date}, 返回日期: {return_date}")
+        logger.info(f"交通方式: {transportation_type}")
         
         async def run_collection():
             data_collector = DataCollector()
             
             # 收集所有类型的数据
             data = await data_collector.collect_all_data(
-                "北京",  # 默认出发地
+                origin,
                 destination, 
-                None,  # 这里应该传入具体的日期
-                None,
-                "mixed"  # 收集混合交通方式
+                departure_date,
+                return_date,
+                transportation_type
             )
             
             await data_collector.close()
             
             return {
                 "status": "success",
+                "origin": origin,
                 "destination": destination,
+                "departure_date": departure_date,
+                "return_date": return_date,
+                "transportation_type": transportation_type,
                 "data_counts": {
                     "flights": len(data.get("flights", [])),
                     "hotels": len(data.get("hotels", [])),
@@ -55,7 +76,7 @@ def refresh_cache_task():
     try:
         logger.info("开始执行缓存刷新任务")
         
-        from app.core.redis import clear_cache_pattern
+        from app.core.redis import clear_cache_pattern_sync
         
         # 清理过期的缓存
         patterns = [
@@ -69,7 +90,7 @@ def refresh_cache_task():
         
         total_cleared = 0
         for pattern in patterns:
-            cleared = await clear_cache_pattern(pattern)
+            cleared = clear_cache_pattern_sync(pattern)
             total_cleared += cleared
         
         return {
