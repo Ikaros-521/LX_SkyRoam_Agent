@@ -184,6 +184,12 @@ class PlanGenerator:
       "weather_info": {
         "travel_recommendations": ["基于天气的旅游建议1", "建议2"]
       },
+      "destination_info": {
+        "name": "目的地名称",
+        "latitude": 纬度,
+        "longitude": 经度,
+        "source": "数据来源"
+      },
       "duration_days": 天数,
       "generated_at": "生成时间"
     }
@@ -251,6 +257,7 @@ class PlanGenerator:
 17. 针对年龄群体({', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'})调整景点选择和活动强度
 18. 严格遵守饮食禁忌({', '.join(getattr(plan, 'dietaryRestrictions', [])) if getattr(plan, 'dietaryRestrictions', None) else '无饮食禁忌'})，避免推荐相关食物
 19. 优先推荐符合饮食偏好({', '.join(getattr(plan, 'foodPreferences', [])) if getattr(plan, 'foodPreferences', None) else '无特殊偏好'})的餐厅和菜系
+20. 在destination_info中填入目的地的准确坐标信息，优先使用景点数据中的坐标，如果没有则使用酒店或餐厅的坐标
 
 请直接返回JSON格式的结果，不要添加任何其他文本。
 """
@@ -304,7 +311,7 @@ class PlanGenerator:
                 # 关键：用真实交通数据校准LLM输出，避免距离/时长被编造
                 self._enforce_transportation_from_data(validated_plans, processed_data)
                 
-                # 为每个方案添加原始天气数据
+                # 为每个方案添加原始天气数据和目的地坐标信息
                 weather_data = processed_data.get('weather', {})
                 for plan_data in validated_plans:
                     if 'weather_info' in plan_data:
@@ -316,7 +323,12 @@ class PlanGenerator:
                             'raw_data': weather_data,
                             'travel_recommendations': ["建议根据当地天气情况合理安排行程"]
                         }
-                
+                    
+                    # 添加目的地坐标信息
+                    if 'destination_info' not in plan_data:
+                        plan_data['destination_info'] = self._extract_destination_info(processed_data, plan.destination)
+                        logger.info(f"目的地信息 {plan.id}: {plan_data['destination_info']}")
+
                 # 为每个方案添加原始酒店数据
                 hotel_data = processed_data.get('hotels', [])
                 for plan_data in validated_plans:
@@ -350,11 +362,13 @@ class PlanGenerator:
                                 'available_options': []
                             }
                 
+                logger.warning(f"最终返回结果：{validated_plans}")
+
                 return validated_plans
                 
             except json.JSONDecodeError as e:
                 logger.error(f"解析LLM返回的JSON失败: {e}")
-                logger.debug(f"LLM原始响应: {response}")
+                logger.warning(f"LLM原始响应: {response}")
                 
                 # 尝试从响应中提取JSON
                 extracted_json = self._extract_json_from_response(response)
@@ -377,7 +391,7 @@ class PlanGenerator:
                         
                         self._enforce_transportation_from_data(validated_plans, processed_data)
                         
-                        # 为每个方案添加原始天气数据
+                        # 为每个方案添加原始天气数据和目的地坐标信息
                         weather_data = processed_data.get('weather', {})
                         for plan_data in validated_plans:
                             if 'weather_info' in plan_data:
@@ -389,6 +403,10 @@ class PlanGenerator:
                                     'raw_data': weather_data,
                                     'travel_recommendations': ["建议根据当地天气情况合理安排行程"]
                                 }
+                            
+                            # 添加目的地坐标信息
+                            if 'destination_info' not in plan_data:
+                                plan_data['destination_info'] = self._extract_destination_info(processed_data, plan.destination)
                         
                         return validated_plans
                     except json.JSONDecodeError:
@@ -708,6 +726,9 @@ class PlanGenerator:
             # 获取天气信息
             weather_info = self._format_weather_info(processed_data.get("weather", {}))
             
+            # 获取目的地坐标信息
+            destination_info = self._extract_destination_info(processed_data, plan.destination)
+            
             plan_data = {
                 "id": f"plan_{plan_index}",
                 "type": plan_type,
@@ -720,6 +741,7 @@ class PlanGenerator:
                 "transportation": transportation,
                 "total_cost": total_cost,
                 "weather_info": weather_info,
+                "destination_info": destination_info,
                 "duration_days": plan.duration_days,
                 "generated_at": datetime.utcnow().isoformat()
             }
@@ -989,3 +1011,98 @@ class PlanGenerator:
         ]
         
         return recommendations
+    
+    def _extract_destination_info(self, processed_data: Dict[str, Any], destination: str) -> Dict[str, Any]:
+        """提取目的地坐标信息"""
+        try:
+            # 从处理后的数据中提取坐标信息
+            # 首先尝试从景点数据中获取坐标（景点通常在目的地附近）
+            attractions = processed_data.get("attractions", [])
+            if attractions:
+                # 使用第一个景点的坐标作为目的地坐标
+                first_attraction = attractions[0]
+                coordinates = first_attraction.get("coordinates")
+                if coordinates and isinstance(coordinates, dict):
+                    lat = coordinates.get("lat")
+                    lng = coordinates.get("lng")
+                    if lat is not None and lng is not None:
+                        return {
+                            "name": destination,
+                            "latitude": lat,
+                            "longitude": lng,
+                            "source": "attractions"
+                        }
+                # 兼容直接的latitude/longitude字段
+                elif "latitude" in first_attraction and "longitude" in first_attraction:
+                    return {
+                        "name": destination,
+                        "latitude": first_attraction["latitude"],
+                        "longitude": first_attraction["longitude"],
+                        "source": "attractions"
+                    }
+            
+            # 如果景点数据中没有坐标，尝试从酒店数据中获取
+            hotels = processed_data.get("hotels", [])
+            if hotels:
+                first_hotel = hotels[0]
+                coordinates = first_hotel.get("coordinates")
+                if coordinates and isinstance(coordinates, dict):
+                    lat = coordinates.get("lat")
+                    lng = coordinates.get("lng")
+                    if lat is not None and lng is not None:
+                        return {
+                            "name": destination,
+                            "latitude": lat,
+                            "longitude": lng,
+                            "source": "hotels"
+                        }
+                # 兼容直接的latitude/longitude字段
+                elif "latitude" in first_hotel and "longitude" in first_hotel:
+                    return {
+                        "name": destination,
+                        "latitude": first_hotel["latitude"],
+                        "longitude": first_hotel["longitude"],
+                        "source": "hotels"
+                    }
+            
+            # 如果都没有，尝试从餐厅数据中获取
+            restaurants = processed_data.get("restaurants", [])
+            if restaurants:
+                first_restaurant = restaurants[0]
+                coordinates = first_restaurant.get("coordinates")
+                if coordinates and isinstance(coordinates, dict):
+                    lat = coordinates.get("lat")
+                    lng = coordinates.get("lng")
+                    if lat is not None and lng is not None:
+                        return {
+                            "name": destination,
+                            "latitude": lat,
+                            "longitude": lng,
+                            "source": "restaurants"
+                        }
+                # 兼容直接的latitude/longitude字段
+                elif "latitude" in first_restaurant and "longitude" in first_restaurant:
+                    return {
+                        "name": destination,
+                        "latitude": first_restaurant["latitude"],
+                        "longitude": first_restaurant["longitude"],
+                        "source": "restaurants"
+                    }
+            
+            # 如果所有数据都没有坐标，返回默认坐标（北京）
+            logger.warning(f"无法获取目的地 {destination} 的坐标信息，使用默认坐标")
+            return {
+                "name": destination,
+                "latitude": 39.9042,
+                "longitude": 116.4074,
+                "source": "default"
+            }
+            
+        except Exception as e:
+            logger.error(f"提取目的地坐标信息失败: {e}")
+            return {
+                "name": destination,
+                "latitude": 39.9042,
+                "longitude": 116.4074,
+                "source": "error_fallback"
+            }

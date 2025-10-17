@@ -707,28 +707,48 @@ class DataCollector:
         transportation_mode: Optional[str] = None
     ) -> Dict[str, Any]:
         """收集所有类型的数据"""
-        logger.info(f"开始收集 {destination} 的所有数据")
-        
-        # 并行收集所有数据
-        tasks = [
-            self.collect_flight_data(departure, destination, start_date, end_date),
-            self.collect_hotel_data(destination, start_date, end_date),
-            self.collect_attraction_data(destination),
-            self.collect_weather_data(destination, start_date, end_date),
-            self.collect_restaurant_data(destination),
-            self.collect_transportation_data(departure, destination, transportation_mode)  # 根据指定出行方式收集交通数据
-        ]
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        return {
-            "flights": results[0] if not isinstance(results[0], Exception) else [],
-            "hotels": results[1] if not isinstance(results[1], Exception) else [],
-            "attractions": results[2] if not isinstance(results[2], Exception) else [],
-            "weather": results[3] if not isinstance(results[3], Exception) else {},
-            "restaurants": results[4] if not isinstance(results[4], Exception) else [],
-            "transportation": results[5] if not isinstance(results[5], Exception) else []
-        }
+        logger.info(f"开始顺序收集 {destination} 的所有数据")
+        data = {}
+
+        interval_seconds = 1
+
+        try:
+            data["flights"] = await self.collect_flight_data(departure, destination, start_date, end_date)
+        except Exception as e:
+            logger.exception("航班数据失败")
+            data["flights"] = []
+        await asyncio.sleep(interval_seconds)
+
+        try:
+            data["hotels"] = await self.collect_hotel_data(destination, start_date, end_date)
+        except Exception:
+            data["hotels"] = []
+        await asyncio.sleep(interval_seconds)
+
+        try:
+            data["attractions"] = await self.collect_attraction_data(destination)
+        except Exception:
+            data["attractions"] = []
+        await asyncio.sleep(interval_seconds)
+
+        try:
+            data["weather"] = await self.collect_weather_data(destination, start_date, end_date)
+        except Exception:
+            data["weather"] = {}
+        await asyncio.sleep(interval_seconds)
+
+        try:
+            data["restaurants"] = await self.collect_restaurant_data(destination)
+        except Exception:
+            data["restaurants"] = []
+        await asyncio.sleep(interval_seconds)
+
+        try:
+            data["transportation"] = await self.collect_transportation_data(departure, destination, transportation_mode)
+        except Exception:
+            data["transportation"] = []
+
+        return data
     
     async def _collect_driving_data(self, departure: str, destination: str, transport_data: List[Dict[str, Any]]):
         """收集自驾交通数据"""
