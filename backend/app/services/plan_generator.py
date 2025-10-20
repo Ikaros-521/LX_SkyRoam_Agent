@@ -8,8 +8,47 @@ from loguru import logger
 import random
 import json
 import asyncio
+import time
+import traceback
+from functools import wraps
 from app.tools.openai_client import openai_client
 from app.core.config import settings
+
+
+def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 60.0):
+    """重试装饰器，支持指数退避"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    
+                    # 检查是否是API限速错误
+                    error_msg = str(e).lower()
+                    is_rate_limit = any(keyword in error_msg for keyword in [
+                        'rate limit', 'too many requests', '429', 'quota exceeded'
+                    ])
+                    
+                    if attempt < max_retries - 1:
+                        # 计算退避延迟
+                        if is_rate_limit:
+                            delay = min(base_delay * (2 ** attempt) * 2, max_delay)  # 限速错误延迟更长
+                        else:
+                            delay = min(base_delay * (2 ** attempt), max_delay)
+                        
+                        logger.warning(f"第{attempt + 1}次调用失败: {e}, {delay:.1f}秒后重试")
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"重试{max_retries}次后仍然失败: {e}")
+            
+            raise last_exception
+        return wrapper
+    return decorator
 
 
 class PlanGenerator:
@@ -604,334 +643,109 @@ class PlanGenerator:
         preferences: Optional[Dict[str, Any]] = None,
         raw_data: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        """使用LLM生成旅行方案"""
+        """使用模块化LLM生成旅行方案"""
         try:
-            # 构建系统提示
-            system_prompt = """你是一个专业的旅行规划师，擅长为游客制定详细的旅行计划。
-请根据提供的数据和用户需求，生成2个倾向吃好玩好的旅行方案。
-
-在制定方案时，请特别注意以下要求：
-1. 人数配置：根据旅行人数合理安排住宿（房间数量、床位类型）、餐厅（用餐人数、包间需求）、交通（车辆类型、座位数）
-2. 年龄群体：针对不同年龄段的游客调整行程强度、景点选择和活动安排
-3. 饮食偏好：根据用户的口味偏好推荐合适的餐厅和菜系
-4. 饮食禁忌：严格避免推荐包含用户饮食禁忌的餐厅和食物，确保饮食安全
-
-重要：请直接返回一个包含所有方案的数组，不要嵌套在plans对象中。
-
-必须严格按照以下JSON格式返回：
-
-[
-  {
-    "id": "plan_1",
-    "type": "经济实惠型",
-    "title": "经济实惠的{目的地}之旅",
-      "description": "详细的方案描述",
-      "flight": {
-        "airline": "航空公司",
-        "departure_time": "出发时间",
-        "arrival_time": "到达时间",
-        "price": 价格,
-        "rating": 评分
-      },
-      "hotel": {
-        "name": "酒店名称",
-        "address": "酒店地址",
-        "price_per_night": 每晚价格,
-        "rating": 评分,
-        "amenities": ["设施1", "设施2"]
-      },
-      "daily_itineraries": [
-        {
-          "day": 1,
-          "date": "日期",
-          "attractions": [
-            {
-              "name": "景点名称",
-              "category": "景点类型",
-              "description": "景点描述",
-              "price": 门票价格,
-              "rating": 评分,
-              "visit_time": "建议游览时间"
-            }
-          ],
-          "meals": [
-            {
-              "type": "早餐/午餐/晚餐",
-              "time": "用餐时间",
-              "suggestion": "餐厅建议",
-              "estimated_cost": 预估费用
-            }
-          ],
-          "transportation": {
-            "type": "交通方式",
-            "route": "具体路线",
-            "duration": "耗时(分钟)",
-            "distance": "距离(公里)",
-            "cost": "费用(元)",
-            "traffic_conditions": "路况信息",
-            "operating_hours": "运营时间",
-            "frequency": "发车频率"
-          },
-          "estimated_cost": 当日总费用
-        }
-      ],
-      "restaurants": [
-        {
-          "name": "餐厅名称",
-          "cuisine": "菜系",
-          "price_range": "价格区间",
-          "rating": 评分,
-          "address": "地址"
-        }
-      ],
-      "transportation": [
-        {
-          "type": "交通方式",
-          "name": "交通名称",
-          "description": "简要描述",
-          "duration": "耗时(分钟)",
-          "distance": "距离(公里)",
-          "price": "费用(元)",
-          "operating_hours": "运营时间"
-        }
-      ],
-      "total_cost": {
-        "flight": 航班费用,
-        "hotel": 酒店费用,
-        "attractions": 景点费用,
-        "meals": 餐饮费用,
-        "transportation": 交通费用,
-        "total": 总费用
-      },
-      "weather_info": {
-        "travel_recommendations": ["基于天气的旅游建议1", "建议2"]
-      },
-      "duration_days": 天数,
-      "generated_at": "生成时间"
-    }
-  ]
-
-请确保返回的JSON格式完全符合上述结构，不要添加任何额外的文本或说明。"""
+            logger.info("开始模块化生成旅行方案")
             
-            # 构建用户提示
-            user_prompt = f"""
-请为以下旅行需求制定多个方案：
-
-出发地：{plan.departure}
-目的地：{plan.destination}
-旅行天数：{plan.duration_days}天
-出发日期：{plan.start_date}
-返回日期：{plan.end_date}
-预算：{plan.budget}元
-出行方式：{plan.transportation or '未指定'}
-旅行人数：{getattr(plan, 'travelers', 1)}人
-年龄群体：{', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'}
-饮食偏好：{', '.join(getattr(plan, 'foodPreferences', [])) if getattr(plan, 'foodPreferences', None) else '无特殊偏好'}
-饮食禁忌：{', '.join(getattr(plan, 'dietaryRestrictions', [])) if getattr(plan, 'dietaryRestrictions', None) else '无饮食禁忌'}
-用户偏好：{preferences or '无特殊偏好'}
-特殊要求：{plan.requirements or '无特殊要求'}
-
-真实可用数据：
-
-航班信息：
-{self._format_data_for_llm(processed_data.get('flights', []), 'flight')}
-
-酒店信息：
-{self._format_data_for_llm(processed_data.get('hotels', []), 'hotel')}
-
-景点信息：
-{self._format_data_for_llm(processed_data.get('attractions', []), 'attraction')}
-
-餐厅信息：
-{self._format_data_for_llm(processed_data.get('restaurants', []), 'restaurant')}
-
-交通信息：
-{self._format_data_for_llm(processed_data.get('transportation', []), 'transportation')}
-
-天气信息：
-{processed_data.get('weather', {})}
-
-请基于以上真实数据生成3-5个不同风格的旅行方案，每个方案都要实用且详细。
-
-重要提醒：
-1. 必须严格按照指定的JSON格式返回
-2. 必须使用提供的真实数据，不要虚构信息
-3. 每个方案都要包含完整的daily_itineraries数组
-4. 价格信息要基于真实数据，符合预算
-5. 景点安排要考虑地理位置和游览时间，优先选择交通便利的景点
-6. 餐饮建议要基于真实餐厅信息，考虑与景点的距离
-7. 交通方式要基于真实交通数据，包括耗时、费用、路况信息
-8. 优先考虑用户指定的出行方式：{plan.transportation or '未指定'}
-9. 在交通安排中要包含实时路况、拥堵情况、道路状况等详细信息
-10. 使用地图数据时，要充分利用距离、耗时、发车频率、路况等详细信息
-11. 景点选择要考虑交通便利性，优先推荐公共交通可达的景点
-12. 在daily_itineraries中要合理安排景点间的交通时间和方式
-13. 考虑不同交通方式的运营时间，避免安排超出运营时间的行程
-14. 基于天气情况在weather_info中生成实用的旅游建议
-15. 旅游建议要具体实用，如穿衣建议、活动安排、注意事项等
-16. 根据旅行人数({getattr(plan, 'travelers', 1)}人)合理安排酒店房间数量、餐厅座位、交通工具容量
-17. 针对年龄群体({', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'})调整景点选择和活动强度
-18. 严格遵守饮食禁忌({', '.join(getattr(plan, 'dietaryRestrictions', [])) if getattr(plan, 'dietaryRestrictions', None) else '无饮食禁忌'})，避免推荐相关食物
-19. 优先推荐符合饮食偏好({', '.join(getattr(plan, 'foodPreferences', [])) if getattr(plan, 'foodPreferences', None) else '无特殊偏好'})的餐厅和菜系
-
-请直接返回JSON格式的结果，不要添加任何其他文本。
-"""
+            # 串行调用各个模块化生成器，避免API限速
+            logger.info("开始串行生成各模块方案...")
             
-            logger.info(f"LLM用户提示: {user_prompt}")
-
-            # 调用LLM
-            response = await openai_client.generate_text(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
-                temperature=0.7
+            # 住宿方案
+            try:
+                accommodation_plans = await self._generate_accommodation_plans(
+                    processed_data.get('hotels', []),
+                    processed_data.get('flights', []),
+                    plan,
+                    preferences
+                )
+            except Exception as e:
+                logger.error(f"住宿方案生成失败: {e}")
+                accommodation_plans = []
+            
+            # 添加延迟避免API限速
+            await asyncio.sleep(1)
+            
+            # 餐饮方案
+            try:
+                dining_plans = await self._generate_dining_plans(
+                    processed_data.get('restaurants', []),
+                    plan,
+                    preferences
+                )
+            except Exception as e:
+                logger.error(f"餐饮方案生成失败: {e}")
+                dining_plans = []
+            
+            # 添加延迟避免API限速
+            await asyncio.sleep(1)
+            
+            # 交通方案
+            try:
+                transportation_plans = await self._generate_transportation_plans(
+                    processed_data.get('transportation', []),
+                    plan,
+                    preferences
+                )
+            except Exception as e:
+                logger.error(f"交通方案生成失败: {e}")
+                transportation_plans = []
+            
+            # 添加延迟避免API限速
+            await asyncio.sleep(1)
+            
+            # 景点方案
+            try:
+                attraction_plans = await self._generate_attraction_plans(
+                    processed_data.get('attractions', []),
+                    plan,
+                    preferences
+                )
+            except Exception as e:
+                logger.error(f"景点方案生成失败: {e}")
+                attraction_plans = []
+            
+            # 检查是否有足够的数据进行组装
+            failed_modules = []
+            if not accommodation_plans:
+                failed_modules.append("住宿方案")
+            if not dining_plans:
+                failed_modules.append("餐饮方案")
+            if not transportation_plans:
+                failed_modules.append("交通方案")
+            if not attraction_plans:
+                failed_modules.append("景点方案")
+            
+            if failed_modules:
+                error_msg = f"以下模块生成失败: {', '.join(failed_modules)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            logger.info(f"模块化生成完成 - 住宿:{len(accommodation_plans)}, 餐饮:{len(dining_plans)}, 交通:{len(transportation_plans)}, 景点:{len(attraction_plans)}")
+            
+            # 使用组装器整合所有方案
+            assembled_plans = await self._assemble_travel_plans(
+                accommodation_plans,
+                dining_plans,
+                transportation_plans,
+                attraction_plans,
+                processed_data,
+                plan
             )
             
-            # 尝试解析JSON响应
-            try:
-                # 清理响应文本，移除可能的markdown标记
-                cleaned_response = self._clean_llm_response(response)
-                
-                result = json.loads(cleaned_response)
-                if isinstance(result, dict) and 'plans' in result:
-                    plans = result['plans']
-                    # 处理嵌套的plans结构
-                    if plans and isinstance(plans[0], dict) and 'plans' in plans[0]:
-                        # 扁平化嵌套的plans数组
-                        flattened_plans = []
-                        for plan_group in plans:
-                            if isinstance(plan_group.get('plans'), list):
-                                flattened_plans.extend(plan_group['plans'])
-                        plans = flattened_plans
-                elif isinstance(result, list):
-                    plans = result
-                else:
-                    logger.warning("LLM返回的JSON格式不符合预期")
-                    return []
-                
-                # 验证和清理方案数据
-                validated_plans = []
-                for i, plan_data in enumerate(plans):
-                    if self._validate_plan_data(plan_data):
-                        plan_data['id'] = f"llm_plan_{i}"
-                        plan_data['generated_at'] = datetime.utcnow().isoformat()
-                        validated_plans.append(plan_data)
-                    else:
-                        logger.warning(f"方案 {i} 数据验证失败")
-                
-                if not validated_plans:
-                    logger.error("所有LLM生成的方案都未通过验证")
-                    return []
-                
-                # 关键：用真实交通数据校准LLM输出，避免距离/时长被编造
-                self._enforce_transportation_from_data(validated_plans, processed_data)
-                
-                # 为每个方案添加原始天气数据和目的地坐标信息
-                weather_data = processed_data.get('weather', {})
-                for plan_data in validated_plans:
-                    if 'weather_info' in plan_data:
-                        # 保留LLM生成的旅游建议，添加原始天气数据
-                        plan_data['weather_info']['raw_data'] = weather_data
-                    else:
-                        # 如果LLM没有生成weather_info，创建一个
-                        plan_data['weather_info'] = {
-                            'raw_data': weather_data,
-                            'travel_recommendations': ["建议根据当地天气情况合理安排行程"]
-                        }
-                    
-                    # 添加目的地坐标信息
-                    if 'destination_info' not in plan_data:
-                        plan_data['destination_info'] = await self._extract_destination_info(processed_data, plan.destination)
-                        logger.info(f"目的地信息 {plan.id}: {plan_data['destination_info']}")
-
-                # 为每个方案添加原始酒店数据
-                hotel_data = processed_data.get('hotels', [])
-                for plan_data in validated_plans:
-                    if 'hotel' in plan_data:
-                        # 保留LLM生成的酒店信息，添加原始酒店数据
-                        plan_data['hotel']['raw_data'] = hotel_data
-                        plan_data['hotel']['available_options'] = hotel_data[:10]  # 提供前10个酒店选项
-                    else:
-                        # 如果LLM没有生成hotel，创建一个默认的
-                        if hotel_data:
-                            # 使用第一个酒店作为默认选择
-                            default_hotel = hotel_data[0]
-                            plan_data['hotel'] = {
-                                'name': default_hotel.get('name', '推荐酒店'),
-                                'address': default_hotel.get('address', ''),
-                                'price_per_night': default_hotel.get('price_per_night', 200),
-                                'rating': default_hotel.get('rating', 4.0),
-                                'amenities': default_hotel.get('amenities', []),
-                                'raw_data': hotel_data,
-                                'available_options': hotel_data[:10]
-                            }
-                        else:
-                            # 没有酒店数据时的默认处理
-                            plan_data['hotel'] = {
-                                'name': '待选择酒店',
-                                'address': '请根据实际需求选择',
-                                'price_per_night': 200,
-                                'rating': 4.0,
-                                'amenities': [],
-                                'raw_data': [],
-                                'available_options': []
-                            }
-                
-                logger.warning(f"最终返回结果：{json.dumps(validated_plans, ensure_ascii=False)}")
-
-                return validated_plans
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"解析LLM返回的JSON失败: {e}")
-                logger.warning(f"LLM原始响应: {response}")
-                
-                # 尝试从响应中提取JSON
-                extracted_json = self._extract_json_from_response(response)
-                if extracted_json:
-                    try:
-                        result = json.loads(extracted_json)
-                        if isinstance(result, dict) and 'plans' in result:
-                            plans = result['plans']
-                        elif isinstance(result, list):
-                            plans = result
-                        else:
-                            return []
-                        
-                        validated_plans = []
-                        for i, plan_data in enumerate(plans):
-                            if self._validate_plan_data(plan_data):
-                                plan_data['id'] = f"llm_plan_{i}"
-                                plan_data['generated_at'] = datetime.utcnow().isoformat()
-                                validated_plans.append(plan_data)
-                        
-                        self._enforce_transportation_from_data(validated_plans, processed_data)
-                        
-                        # 为每个方案添加原始天气数据和目的地坐标信息
-                        weather_data = processed_data.get('weather', {})
-                        for plan_data in validated_plans:
-                            if 'weather_info' in plan_data:
-                                # 保留LLM生成的旅游建议，添加原始天气数据
-                                plan_data['weather_info']['raw_data'] = weather_data
-                            else:
-                                # 如果LLM没有生成weather_info，创建一个
-                                plan_data['weather_info'] = {
-                                    'raw_data': weather_data,
-                                    'travel_recommendations': ["建议根据当地天气情况合理安排行程"]
-                                }
-                            
-                            # 添加目的地坐标信息
-                            if 'destination_info' not in plan_data:
-                                plan_data['destination_info'] = self._extract_destination_info(processed_data, plan.destination)
-                        
-                        return validated_plans
-                    except json.JSONDecodeError:
-                        pass
-                
+            if not assembled_plans:
+                logger.error("方案组装失败，返回空列表")
                 return []
-                
+            
+            logger.info(f"成功生成 {len(assembled_plans)} 个完整旅行方案")
+            return assembled_plans
+            
         except Exception as e:
-            logger.error(f"LLM生成方案失败: {e}")
-            raise
+            logger.error(f"模块化生成方案失败: {e}")
+            # 如果模块化生成失败，回退到原始方法
+            logger.info("回退到原始LLM生成方法")
+            return await self._generate_plans_with_llm_fallback(processed_data, plan, preferences, raw_data)
+
+
     
     def _validate_plan_data(self, plan_data: Dict[str, Any]) -> bool:
         """验证方案数据"""
@@ -1234,9 +1048,17 @@ class PlanGenerator:
                 processed_data.get("transportation", [])
             )
             
+            # 构造住宿信息用于费用计算
+            accommodation = {
+                "total_accommodation_cost": {
+                    "flight": flight.get("price", 0) if flight else 0,
+                    "hotel": hotel.get("price_per_night", 0) * plan.duration_days if hotel else 0
+                }
+            }
+            
             # 计算总预算
             total_cost = self._calculate_total_cost(
-                flight, hotel, daily_itineraries, restaurants
+                accommodation, daily_itineraries, plan.duration_days
             )
             
             # 获取天气信息
@@ -1428,40 +1250,7 @@ class PlanGenerator:
         # 选择最常用的交通方式
         return transportation[:3]  # 返回前3种交通方式
     
-    def _calculate_total_cost(
-        self,
-        flight: Optional[Dict[str, Any]],
-        hotel: Optional[Dict[str, Any]],
-        daily_itineraries: List[Dict[str, Any]],
-        restaurants: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """计算总预算"""
-        costs = {
-            "flight": flight.get("price", 0) if flight else 0,
-            "hotel": 0,
-            "attractions": 0,
-            "meals": 0,
-            "transportation": 0,
-            "total": 0
-        }
-        
-        # 酒店费用
-        if hotel:
-            costs["hotel"] = hotel.get("price_per_night", 0) * len(daily_itineraries)
-        
-        # 景点费用
-        for day in daily_itineraries:
-            costs["attractions"] += day.get("estimated_cost", 0)
-        
-        # 餐饮费用（估算）
-        costs["meals"] = len(daily_itineraries) * 3 * 50  # 每天3餐，每餐50元
-        
-        # 交通费用（估算）
-        costs["transportation"] = len(daily_itineraries) * 20  # 每天20元交通费
-        
-        costs["total"] = sum(costs.values())
-        
-        return costs
+
     
     async def refine_plan(
         self, 
@@ -1637,3 +1426,748 @@ class PlanGenerator:
                 "longitude": 116.4074,
                 "source": "error_fallback"
             }
+
+    # ==================== 模块化LLM生成器方法 ====================
+    
+    @retry_with_backoff(max_retries=3, base_delay=2.0)
+    async def _generate_accommodation_plans(
+        self,
+        hotels_data: List[Dict[str, Any]],
+        flights_data: List[Dict[str, Any]],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """生成住宿方案（包含航班信息）"""
+        try:
+            system_prompt = """你是一个专业的住宿规划师，专门为游客推荐合适的酒店和航班组合。
+请根据提供的真实酒店和航班数据，为用户生成2-3个不同价位的住宿方案。
+
+每个方案应该包含：
+1. 航班选择（考虑价格、时间、航空公司）
+2. 酒店选择（考虑位置、价格、设施、评分）
+3. 住宿总费用计算
+
+请严格按照以下JSON格式返回：
+[
+  {
+    "type": "经济型",
+    "flight": {
+      "airline": "航空公司",
+      "departure_time": "出发时间",
+      "arrival_time": "到达时间", 
+      "price": 价格,
+      "rating": 评分,
+      "flight_number": "航班号"
+    },
+    "hotel": {
+      "name": "酒店名称",
+      "address": "酒店地址",
+      "price_per_night": 每晚价格,
+      "rating": 评分,
+      "amenities": ["设施1", "设施2"],
+      "location_advantage": "位置优势",
+      "room_type": "房间类型"
+    },
+    "total_accommodation_cost": {
+      "flight": 航班费用,
+      "hotel": 酒店总费用,
+      "total": 住宿总费用
+    },
+    "accommodation_highlights": ["亮点1", "亮点2"]
+  }
+]"""
+
+            user_prompt = f"""
+请为以下旅行需求推荐住宿方案：
+
+出发地：{plan.departure}
+目的地：{plan.destination}
+旅行天数：{plan.duration_days}天
+出发日期：{plan.start_date}
+返回日期：{plan.end_date}
+预算：{plan.budget}元
+旅行人数：{getattr(plan, 'travelers', 1)}人
+年龄群体：{', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'}
+用户偏好：{preferences or '无特殊偏好'}
+
+可用航班数据：
+{self._format_data_for_llm(flights_data, 'flight')}
+
+可用酒店数据：
+{self._format_data_for_llm(hotels_data, 'hotel')}
+
+要求：
+1. 根据旅行人数({getattr(plan, 'travelers', 1)}人)合理安排房间数量和床位类型
+2. 考虑年龄群体({', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'})的住宿需求
+3. 航班时间要合理，避免红眼航班（除非预算紧张）
+4. 酒店位置要便于游览，交通便利
+5. 总费用要在预算范围内
+6. 必须使用提供的真实数据，不要虚构
+
+请直接返回JSON格式结果。
+"""
+
+            response = await openai_client.generate_text(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=2000,
+                temperature=0.7
+            )
+
+            cleaned_response = self._clean_llm_response(response)
+            result = json.loads(cleaned_response)
+            
+            if not isinstance(result, list):
+                logger.warning("住宿方案返回格式不正确")
+                return []
+                
+            logger.info(f"生成住宿方案数量: {len(result)}")
+            return result
+
+        except Exception as e:
+            logger.error(f"生成住宿方案失败: {e}")
+            return []
+
+    @retry_with_backoff(max_retries=3, base_delay=2.0)
+    async def _generate_dining_plans(
+        self,
+        restaurants_data: List[Dict[str, Any]],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """生成餐饮方案"""
+        try:
+            system_prompt = """你是一个专业的美食规划师，专门为游客推荐当地特色餐厅和美食。
+请根据提供的真实餐厅数据，为用户的每一天生成详细的用餐安排。
+
+每天的用餐安排应该包含：
+1. 早餐、午餐、晚餐的具体餐厅推荐
+2. 每个餐厅的招牌菜品和口味描述
+3. 用餐时间安排和预订建议
+4. 餐饮费用预估
+
+请严格按照以下JSON格式返回：
+[
+  {
+    "day": 1,
+    "meals": [
+      {
+        "type": "早餐",
+        "time": "08:00-09:00",
+        "restaurant_name": "餐厅名称",
+        "cuisine": "菜系类型",
+        "recommended_dishes": [
+          {
+            "name": "菜品名称",
+            "description": "菜品描述和特色",
+            "price": "价格区间",
+            "taste": "口味特点"
+          }
+        ],
+        "atmosphere": "用餐环境描述",
+        "estimated_cost": 预估费用,
+        "booking_tips": "预订建议",
+        "address": "餐厅地址"
+      }
+    ],
+    "daily_food_cost": 当日餐饮总费用,
+    "food_highlights": ["美食亮点1", "特色推荐2"]
+  }
+]"""
+
+            user_prompt = f"""
+请为以下旅行需求制定餐饮方案：
+
+目的地：{plan.destination}
+旅行天数：{plan.duration_days}天
+旅行人数：{getattr(plan, 'travelers', 1)}人
+饮食偏好：{', '.join(getattr(plan, 'foodPreferences', [])) if getattr(plan, 'foodPreferences', None) else '无特殊偏好'}
+饮食禁忌：{', '.join(getattr(plan, 'dietaryRestrictions', [])) if getattr(plan, 'dietaryRestrictions', None) else '无饮食禁忌'}
+预算：{plan.budget}元
+用户偏好：{preferences or '无特殊偏好'}
+
+可用餐厅数据：
+{self._format_data_for_llm(restaurants_data, 'restaurant')}
+
+要求：
+1. 根据用户饮食偏好推荐合适菜系
+2. 严格避免推荐含有饮食禁忌的食物
+3. 为每餐推荐具体的菜品名称和特色描述
+4. 考虑用餐人数安排合适的餐厅
+5. 提供详细的口味描述和用餐建议
+6. 必须使用提供的真实餐厅数据
+
+请直接返回JSON格式结果。
+"""
+
+            response = await openai_client.generate_text(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=3000,
+                temperature=0.7
+            )
+
+            cleaned_response = self._clean_llm_response(response)
+            result = json.loads(cleaned_response)
+            
+            if not isinstance(result, list):
+                logger.warning("餐饮方案返回格式不正确")
+                return []
+                
+            logger.info(f"生成餐饮方案天数: {len(result)}")
+            return result
+
+        except Exception as e:
+            logger.error(f"生成餐饮方案失败: {e}")
+            return []
+
+    @retry_with_backoff(max_retries=3, base_delay=2.0)
+    async def _generate_transportation_plans(
+        self,
+        transportation_data: List[Dict[str, Any]],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """生成交通方案"""
+        try:
+            system_prompt = """你是一个专业的交通规划师，专门为游客规划当地交通出行方案。
+请根据提供的真实交通数据，为用户生成详细的交通出行建议。
+
+交通方案应该包含：
+1. 主要交通方式推荐（地铁、公交、出租车、步行等）
+2. 详细的路线规划和换乘信息
+3. 交通费用预估和时间安排
+4. 实用的出行建议和注意事项
+
+请严格按照以下JSON格式返回：
+[
+  {
+    "type": "交通方式",
+    "name": "交通名称",
+    "description": "简要描述",
+    "route": "详细路线（起点→途经→终点）",
+    "duration": "耗时(分钟)",
+    "distance": "距离(公里)",
+    "price": "费用(元)",
+    "operating_hours": "运营时间",
+    "frequency": "发车频率",
+    "transfer_points": ["换乘点1", "换乘点2"],
+    "walking_distance": "步行距离",
+    "accessibility": "无障碍设施情况",
+    "peak_hours": "高峰时段",
+    "alternative_routes": "备选路线",
+    "comfort_level": "舒适度评价",
+    "convenience_score": "便利性评分",
+    "usage_tips": ["使用建议1", "注意事项2"]
+  }
+]"""
+
+            user_prompt = f"""
+请为以下旅行需求制定交通方案：
+
+目的地：{plan.destination}
+旅行天数：{plan.duration_days}天
+旅行人数：{getattr(plan, 'travelers', 1)}人
+出行方式偏好：{plan.transportation or '未指定'}
+预算：{plan.budget}元
+用户偏好：{preferences or '无特殊偏好'}
+
+可用交通数据：
+{self._format_data_for_llm(transportation_data, 'transportation')}
+
+要求：
+1. 优先考虑用户指定的出行方式：{plan.transportation or '未指定'}
+2. 提供详细的交通路线和换乘信息
+3. 包含准确的时间、费用、距离信息
+4. 考虑高峰时段和备选路线
+5. 根据旅行人数推荐合适的交通工具
+6. 必须使用提供的真实交通数据
+
+请直接返回JSON格式结果。
+"""
+
+            response = await openai_client.generate_text(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=2500,
+                temperature=0.7
+            )
+
+            cleaned_response = self._clean_llm_response(response)
+            result = json.loads(cleaned_response)
+            
+            if not isinstance(result, list):
+                logger.warning("交通方案返回格式不正确")
+                return []
+                
+            logger.info(f"生成交通方案数量: {len(result)}")
+            return result
+
+        except Exception as e:
+            logger.error(f"生成交通方案失败: {e}")
+            return []
+
+    @retry_with_backoff(max_retries=3, base_delay=2.0)
+    async def _generate_attraction_plans(
+        self,
+        attractions_data: List[Dict[str, Any]],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """生成景点游玩方案"""
+        try:
+            system_prompt = """你是一个专业的景点规划师，专门为游客规划景点游览行程。
+请根据提供的真实景点数据，为用户的每一天生成详细的景点游览安排。
+
+每天的游览安排应该包含：
+1. 景点选择和游览顺序
+2. 详细的时间安排和游览建议
+3. 景点亮点和拍照推荐
+4. 门票费用和开放时间
+
+请严格按照以下JSON格式返回：
+[
+  {
+    "day": 1,
+    "date": "日期",
+    "schedule": [
+      {
+        "time": "09:00-12:00",
+        "activity": "景点游览",
+        "location": "具体景点名称",
+        "description": "详细的游览内容和亮点",
+        "cost": 门票价格,
+        "tips": "游览建议和注意事项"
+      }
+    ],
+    "attractions": [
+      {
+        "name": "景点名称",
+        "category": "景点类型",
+        "description": "景点描述",
+        "price": 门票价格,
+        "rating": 评分,
+        "visit_time": "建议游览时间",
+        "opening_hours": "开放时间",
+        "best_visit_time": "最佳游览时段",
+        "highlights": ["亮点1", "亮点2"],
+        "photography_spots": ["拍照点1", "拍照点2"],
+        "address": "景点地址"
+      }
+    ],
+    "estimated_cost": 当日景点费用,
+    "daily_tips": ["当日游览建议1", "注意事项2", "省钱小贴士3"]
+  }
+]"""
+
+            user_prompt = f"""
+请为以下旅行需求制定景点游览方案：
+
+目的地：{plan.destination}
+旅行天数：{plan.duration_days}天
+旅行人数：{getattr(plan, 'travelers', 1)}人
+年龄群体：{', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'}
+预算：{plan.budget}元
+特殊要求：{plan.requirements or '无特殊要求'}
+用户偏好：{preferences or '无特殊偏好'}
+
+可用景点数据：
+{self._format_data_for_llm(attractions_data, 'attraction')}
+
+要求：
+1. 根据年龄群体调整景点选择和活动强度
+2. 景点安排要考虑地理位置，优化游览路线
+3. 为每个景点提供详细的游览建议
+4. 包含开放时间、最佳游览时段等实用信息
+5. 根据旅行人数安排合适的活动
+6. 必须使用提供的真实景点数据
+
+请直接返回JSON格式结果。
+"""
+
+            response = await openai_client.generate_text(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=3500,
+                temperature=0.7
+            )
+
+            cleaned_response = self._clean_llm_response(response)
+            result = json.loads(cleaned_response)
+            
+            if not isinstance(result, list):
+                logger.warning("景点方案返回格式不正确")
+                return []
+                
+            logger.info(f"生成景点方案天数: {len(result)}")
+            return result
+
+        except Exception as e:
+            logger.error(f"生成景点方案失败: {e}")
+            return []
+
+    async def _assemble_travel_plans(
+        self,
+        accommodation_plans: List[Dict[str, Any]],
+        dining_plans: List[Dict[str, Any]],
+        transportation_plans: List[Dict[str, Any]],
+        attraction_plans: List[Dict[str, Any]],
+        processed_data: Dict[str, Any],
+        plan: Any
+    ) -> List[Dict[str, Any]]:
+        """组装完整的旅行方案"""
+        try:
+            assembled_plans = []
+            
+            # 为每个住宿方案创建完整的旅行计划
+            for i, accommodation in enumerate(accommodation_plans):
+                try:
+                    # 基础方案信息
+                    travel_plan = {
+                        "id": f"modular_plan_{i}",
+                        "type": accommodation.get("type", f"方案{i+1}"),
+                        "title": f"{accommodation.get('type', f'方案{i+1}')}的{plan.destination}之旅",
+                        "description": f"精心规划的{plan.duration_days}天{plan.destination}旅行，包含优质住宿、特色美食、便捷交通和精彩景点。",
+                        "duration_days": plan.duration_days,
+                        "generated_at": datetime.utcnow().isoformat()
+                    }
+                    
+                    # 添加航班和酒店信息
+                    travel_plan["flight"] = accommodation.get("flight", {})
+                    travel_plan["hotel"] = accommodation.get("hotel", {})
+                    
+                    # 构建每日行程
+                    daily_itineraries = []
+                    for day in range(1, plan.duration_days + 1):
+                        # 确保day是整数
+                        day_num = int(day)
+                        # 确保日期计算正确
+                        calculated_date = self._calculate_date(plan.start_date, day_num - 1)
+                        
+                        daily_plan = {
+                            "day": day_num,
+                            "date": calculated_date,
+                            "schedule": [],
+                            "attractions": [],
+                            "meals": [],
+                            "transportation": {},
+                            "estimated_cost": 0,  # 确保是整数
+                            "daily_tips": []
+                        }
+                        
+                        # 添加景点安排
+                        day_attractions = self._get_day_attractions(attraction_plans, day_num)
+                        if day_attractions:
+                            # 确保schedule是列表
+                            attraction_schedule = day_attractions.get("schedule", [])
+                            if isinstance(attraction_schedule, list):
+                                daily_plan["schedule"].extend(attraction_schedule)
+                            daily_plan["attractions"] = day_attractions.get("attractions", [])
+                            # 确保费用是数字类型
+                            attraction_cost = day_attractions.get("estimated_cost", 0)
+                            if isinstance(attraction_cost, str):
+                                try:
+                                    attraction_cost = float(attraction_cost)
+                                except (ValueError, TypeError):
+                                    attraction_cost = 0
+                            daily_plan["estimated_cost"] += attraction_cost
+                            daily_plan["daily_tips"].extend(day_attractions.get("daily_tips", []))
+                        
+                        # 添加餐饮安排
+                        day_meals = self._get_day_meals(dining_plans, day_num)
+                        if day_meals:
+                            daily_plan["meals"] = day_meals.get("meals", [])
+                            # 确保费用是数字类型
+                            meal_cost = day_meals.get("daily_food_cost", 0)
+                            if isinstance(meal_cost, str):
+                                try:
+                                    meal_cost = float(meal_cost)
+                                except (ValueError, TypeError):
+                                    meal_cost = 0
+                            daily_plan["estimated_cost"] += meal_cost
+                            
+                            # 将餐饮安排添加到schedule中
+                            for meal in daily_plan["meals"]:
+                                # 确保cost是数字类型
+                                meal_cost = meal.get("estimated_cost", 0)
+                                if isinstance(meal_cost, str):
+                                    try:
+                                        meal_cost = float(meal_cost)
+                                    except (ValueError, TypeError):
+                                        meal_cost = 0
+                                
+                                # 安全构建description
+                                cuisine = str(meal.get('cuisine', ''))
+                                recommended_dishes = meal.get('recommended_dishes', [])
+                                if isinstance(recommended_dishes, list):
+                                    dish_names = [str(dish.get('name', '')) for dish in recommended_dishes[:2] if isinstance(dish, dict)]
+                                    dish_str = ', '.join(dish_names)
+                                else:
+                                    dish_str = ""
+                                
+                                meal_schedule = {
+                                    "time": str(meal.get("time", "")),
+                                    "activity": str(meal.get("type", "用餐")),
+                                    "location": str(meal.get("restaurant_name", "")),
+                                    "description": f"{cuisine}料理，推荐{dish_str}",
+                                    "cost": meal_cost,
+                                    "tips": str(meal.get("booking_tips", ""))
+                                }
+                                daily_plan["schedule"].append(meal_schedule)
+                        
+                        # 添加交通信息（使用第一个交通方案）
+                        if transportation_plans:
+                            daily_plan["transportation"] = transportation_plans[0]
+                        
+                        # 按时间排序schedule
+                        daily_plan["schedule"] = sorted(
+                            daily_plan["schedule"], 
+                            key=lambda x: self._parse_time(x.get("time", "00:00"))
+                        )
+                        
+                        daily_itineraries.append(daily_plan)
+                    
+                    travel_plan["daily_itineraries"] = daily_itineraries
+                    
+                    # 添加餐厅总览
+                    travel_plan["restaurants"] = self._extract_restaurants_summary(dining_plans)
+                    
+                    # 添加交通总览
+                    travel_plan["transportation"] = transportation_plans
+                    
+                    # 计算总费用
+                    travel_plan["total_cost"] = self._calculate_total_cost(
+                        accommodation, daily_itineraries, plan.duration_days
+                    )
+                    
+                    # 添加天气信息
+                    weather_data = processed_data.get('weather', {})
+                    travel_plan["weather_info"] = {
+                        "raw_data": weather_data,
+                        "travel_recommendations": self._generate_weather_recommendations(weather_data)
+                    }
+                    
+                    # 添加目的地信息
+                    travel_plan["destination_info"] = await self._extract_destination_info(processed_data, plan.destination)
+                    
+                    assembled_plans.append(travel_plan)
+                    
+                except Exception as e:
+                    logger.error(f"组装方案 {i} 失败: {e}")
+                    logger.error(f"详细错误信息: {traceback.format_exc()}")
+                    continue
+            
+            logger.info(f"成功组装 {len(assembled_plans)} 个完整旅行方案")
+            return assembled_plans
+            
+        except Exception as e:
+            logger.error(f"组装旅行方案失败: {e}")
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            return []
+
+    def _calculate_date(self, start_date: str, days_offset: int) -> str:
+        """计算指定天数后的日期"""
+        try:
+            from datetime import datetime, timedelta
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            target_date = start + timedelta(days=days_offset)
+            return target_date.strftime("%Y-%m-%d")
+        except:
+            return start_date
+
+    def _get_day_attractions(self, attraction_plans: List[Dict[str, Any]], day: int) -> Dict[str, Any]:
+        """获取指定天数的景点安排"""
+        for day_plan in attraction_plans:
+            if day_plan.get("day") == day:
+                return day_plan
+        return {}
+
+    def _get_day_meals(self, dining_plans: List[Dict[str, Any]], day: int) -> Dict[str, Any]:
+        """获取指定天数的餐饮安排"""
+        for day_plan in dining_plans:
+            if day_plan.get("day") == day:
+                return day_plan
+        return {}
+
+    def _parse_time(self, time_str: str) -> int:
+        """解析时间字符串为分钟数，用于排序"""
+        try:
+            if "-" in time_str:
+                time_str = time_str.split("-")[0]
+            if ":" in time_str:
+                hour, minute = time_str.split(":")
+                return int(hour) * 60 + int(minute)
+        except:
+            pass
+        return 0
+
+    def _extract_restaurants_summary(self, dining_plans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """从餐饮方案中提取餐厅总览"""
+        restaurants = []
+        seen_restaurants = set()
+        
+        for day_plan in dining_plans:
+            for meal in day_plan.get("meals", []):
+                restaurant_name = meal.get("restaurant_name", "")
+                if restaurant_name and restaurant_name not in seen_restaurants:
+                    restaurant = {
+                        "name": restaurant_name,
+                        "cuisine": meal.get("cuisine", ""),
+                        "address": meal.get("address", ""),
+                        "atmosphere": meal.get("atmosphere", ""),
+                        "signature_dishes": meal.get("recommended_dishes", []),
+                        "estimated_cost": meal.get("estimated_cost", 0)
+                    }
+                    restaurants.append(restaurant)
+                    seen_restaurants.add(restaurant_name)
+        
+        return restaurants
+
+    def _calculate_total_cost(
+        self, 
+        accommodation: Dict[str, Any], 
+        daily_itineraries: List[Dict[str, Any]], 
+        duration_days: int
+    ) -> Dict[str, Any]:
+        """计算总费用"""
+        # 确保住宿费用是数字类型
+        flight_cost = accommodation.get("total_accommodation_cost", {}).get("flight", 0)
+        if isinstance(flight_cost, str):
+            try:
+                flight_cost = float(flight_cost)
+            except (ValueError, TypeError):
+                flight_cost = 0
+        
+        hotel_cost = accommodation.get("total_accommodation_cost", {}).get("hotel", 0)
+        if isinstance(hotel_cost, str):
+            try:
+                hotel_cost = float(hotel_cost)
+            except (ValueError, TypeError):
+                hotel_cost = 0
+        
+        # 确保景点费用是数字类型
+        attractions_cost = 0
+        for day in daily_itineraries:
+            day_cost = day.get("estimated_cost", 0)
+            if isinstance(day_cost, str):
+                try:
+                    day_cost = float(day_cost)
+                except (ValueError, TypeError):
+                    day_cost = 0
+            attractions_cost += day_cost
+        
+        # 确保餐饮费用是数字类型
+        meals_cost = 0
+        for day in daily_itineraries:
+            for meal in day.get("meals", []):
+                meal_cost = meal.get("estimated_cost", 0)
+                if isinstance(meal_cost, str):
+                    try:
+                        meal_cost = float(meal_cost)
+                    except (ValueError, TypeError):
+                        meal_cost = 0
+                meals_cost += meal_cost
+        
+        transportation_cost = 100 * duration_days  # 估算每日交通费用
+        
+        total = flight_cost + hotel_cost + attractions_cost + meals_cost + transportation_cost
+        
+        return {
+            "flight": flight_cost,
+            "hotel": hotel_cost,
+            "attractions": attractions_cost,
+            "meals": meals_cost,
+            "transportation": transportation_cost,
+            "total": total
+        }
+
+    def _generate_weather_recommendations(self, weather_data: Dict[str, Any]) -> List[str]:
+        """基于天气数据生成旅游建议"""
+        recommendations = ["建议根据当地天气情况合理安排行程"]
+        
+        try:
+            if weather_data:
+                # 这里可以根据实际天气数据生成更具体的建议
+                recommendations.append("请关注天气变化，适时调整户外活动安排")
+                recommendations.append("建议携带适合当地气候的衣物")
+        except:
+            pass
+            
+        return recommendations
+
+    async def _generate_plans_with_llm_fallback(
+        self,
+        processed_data: Dict[str, Any],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]] = None,
+        raw_data: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """原始LLM生成方案的回退方法"""
+        try:
+            # 构建简化的系统提示
+            system_prompt = """你是一个专业的旅行规划师，请根据提供的数据生成2-3个旅行方案。
+请直接返回JSON格式的方案数组，不要添加任何其他文本。"""
+            
+            # 构建简化的用户提示
+            user_prompt = f"""
+请为以下旅行需求制定方案：
+
+出发地：{plan.departure}
+目的地：{plan.destination}
+旅行天数：{plan.duration_days}天
+预算：{plan.budget}元
+
+基于提供的真实数据生成2个实用的旅行方案。
+
+请返回JSON格式：
+[
+  {{
+    "id": "plan_1",
+    "type": "标准方案",
+    "title": "{plan.destination}之旅",
+    "description": "方案描述",
+    "flight": {{"airline": "航空公司", "price": 800}},
+    "hotel": {{"name": "酒店名称", "price_per_night": 200}},
+    "daily_itineraries": [],
+    "total_cost": {{"total": 2000}},
+    "duration_days": {plan.duration_days}
+  }}
+]
+"""
+            
+            # 调用LLM
+            response = await openai_client.generate_text(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=4000,
+                temperature=0.7
+            )
+            
+            # 尝试解析JSON响应
+            try:
+                cleaned_response = self._clean_llm_response(response)
+                result = json.loads(cleaned_response)
+                
+                if isinstance(result, list):
+                    plans = result
+                elif isinstance(result, dict) and 'plans' in result:
+                    plans = result['plans']
+                else:
+                    return []
+                
+                # 简单验证和处理
+                validated_plans = []
+                for i, plan_data in enumerate(plans):
+                    plan_data['id'] = f"fallback_plan_{i}"
+                    plan_data['generated_at'] = datetime.utcnow().isoformat()
+                    validated_plans.append(plan_data)
+                
+                return validated_plans
+                
+            except json.JSONDecodeError:
+                logger.error("回退方法JSON解析失败")
+                return []
+                
+        except Exception as e:
+            logger.error(f"回退方法失败: {e}")
+            return []

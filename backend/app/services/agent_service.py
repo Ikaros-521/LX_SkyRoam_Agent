@@ -321,6 +321,17 @@ class AgentService:
         
         return scored_plans
     
+    def _serialize_for_json(self, obj):
+        """递归处理对象，将datetime对象转换为字符串"""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {key: self._serialize_for_json(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._serialize_for_json(item) for item in obj]
+        else:
+            return obj
+
     async def _save_generated_plans(
         self, 
         plan_id: int, 
@@ -330,10 +341,13 @@ class AgentService:
         from sqlalchemy import update
         from app.models.travel_plan import TravelPlan
         
+        # 序列化处理，确保没有datetime对象
+        serialized_plans = self._serialize_for_json(plans)
+        
         await self.db.execute(
             update(TravelPlan)
             .where(TravelPlan.id == plan_id)
-            .values(generated_plans=plans)
+            .values(generated_plans=serialized_plans)
         )
         await self.db.commit()
     
