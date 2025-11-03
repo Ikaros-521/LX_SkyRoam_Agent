@@ -1547,7 +1547,11 @@ class PlanGenerator:
             )
 
             cleaned_response = self._clean_llm_response(response)
-            result = json.loads(cleaned_response)
+            try:
+                result = json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                logger.warning(f"生成住宿方案失败，返回结果格式不正确，原始返回值：{cleaned_response}")
+                return []
             
             if not isinstance(result, list):
                 logger.warning("住宿方案返回格式不正确")
@@ -1644,7 +1648,11 @@ class PlanGenerator:
             )
 
             cleaned_response = self._clean_llm_response(response)
-            result = json.loads(cleaned_response)
+            try:
+                result = json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                logger.warning(f"生成餐饮方案失败，返回结果格式不正确，原始返回值：{cleaned_response}")
+                return []
             
             if not isinstance(result, list):
                 logger.warning("餐饮方案返回格式不正确")
@@ -1730,7 +1738,11 @@ class PlanGenerator:
             )
 
             cleaned_response = self._clean_llm_response(response)
-            result = json.loads(cleaned_response)
+            try:
+                result = json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                logger.warning(f"生成交通方案失败，返回结果格式不正确，原始返回值：{cleaned_response}")
+                return []
             
             if not isinstance(result, list):
                 logger.warning("交通方案返回格式不正确")
@@ -1834,7 +1846,11 @@ class PlanGenerator:
             )
 
             cleaned_response = self._clean_llm_response(response)
-            result = json.loads(cleaned_response)
+            try:
+                result = json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                logger.warning(f"生成景点方案失败，返回结果格式不正确，原始返回值：{cleaned_response}")
+                return []
             
             if not isinstance(result, list):
                 logger.warning("景点方案返回格式不正确")
@@ -2187,7 +2203,11 @@ class PlanGenerator:
             # 尝试解析JSON响应
             try:
                 cleaned_response = self._clean_llm_response(response)
-                result = json.loads(cleaned_response)
+                try:    
+                    result = json.loads(cleaned_response)
+                except json.JSONDecodeError:
+                    logger.warning(f"生成方案失败，返回结果格式不正确，原始返回值：{cleaned_response}")
+                    return []
                 
                 if isinstance(result, list):
                     plans = result
