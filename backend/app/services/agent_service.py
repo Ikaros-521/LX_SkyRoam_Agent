@@ -65,7 +65,7 @@ class AgentService:
             logger.info("开始数据收集...")
             raw_data = await self._collect_data(plan, preferences, requirements)
 
-            logger.warning(f"数据收集结果: {json.dumps(raw_data, ensure_ascii=False)}")
+            # logger.warning(f"数据收集结果: {json.dumps(raw_data, ensure_ascii=False)}")
             
             # 4. 数据清洗和评分
             logger.info("开始数据清洗和评分...")

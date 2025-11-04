@@ -7,7 +7,6 @@ import {
   Space,
   Divider,
   List,
-  Avatar,
   Tag
 } from 'antd';
 import { 
@@ -50,7 +49,7 @@ const AboutPage: React.FC = () => {
       name: 'Ikaros',
       role: '创始人',
       avatar: 'https://images.cnblogs.com/cnblogs_com/ikaros-521/1529977/o_251020095820_08bd1e55-e043-480e-a0db-35a0efa50113.png',
-      description: '负责产品规划和用户体验设计'
+      description: '独立开发者，全栈设计与开发'
     }
   ];
 
@@ -169,11 +168,15 @@ const AboutPage: React.FC = () => {
                 style={{ textAlign: 'center' }}
                 bodyStyle={{ padding: '20px' }}
               >
-                <Avatar 
-                  size={80} 
-                  src={member.avatar}
-                  style={{ marginBottom: '16px' }}
-                />
+                <div style={{ marginBottom: '16px' }}>
+                  <img 
+                    src={member.avatar}
+                    alt={member.name}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/images/logo.png'; }}
+                    style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                </div>
                 <Title level={4} style={{ marginBottom: '4px' }}>
                   {member.name}
                 </Title>
