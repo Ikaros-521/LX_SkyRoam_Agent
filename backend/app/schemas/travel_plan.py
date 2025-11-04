@@ -48,6 +48,11 @@ class TravelPlanBase(BaseModel):
     requirements: Optional[Dict[str, Any]] = Field(None, description="特殊要求")
 
 
+class TravelPlanCreateRequest(TravelPlanBase):
+    """创建旅行计划请求体（不含用户ID）"""
+    pass
+
+
 class TravelPlanCreate(TravelPlanBase):
     """创建旅行计划模式"""
     user_id: int = Field(..., description="用户ID")

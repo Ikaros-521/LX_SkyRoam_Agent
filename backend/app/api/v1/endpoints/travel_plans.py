@@ -10,6 +10,7 @@ from datetime import datetime
 from app.core.database import get_async_db, AsyncSessionLocal
 from app.schemas.travel_plan import (
     TravelPlanCreate, 
+    TravelPlanCreateRequest,
     TravelPlanUpdate, 
     TravelPlanResponse,
     TravelPlanGenerateRequest,
@@ -63,7 +64,7 @@ async def generate_travel_plans_task(
 
 @router.post("/", response_model=TravelPlanResponse)
 async def create_travel_plan(
-    plan_data: TravelPlanCreate,
+    plan_data: TravelPlanCreateRequest,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
