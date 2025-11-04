@@ -53,14 +53,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     fetchMe();
   }, [token]);
 
-  // 新增：统一的菜单项定义
+  // 嵌入式菜单：将“创建计划”移出菜单作为CTA按钮
   const baseMenuItems = [
     { key: '/', label: '首页', icon: <HomeOutlined /> },
-    { key: '/plan', label: '创建计划', icon: <CalendarOutlined /> },
     { key: '/history', label: '历史记录', icon: <HistoryOutlined /> },
     { key: '/about', label: '关于我们', icon: <InfoCircleOutlined /> },
   ];
-  // 管理员入口不再出现在顶部主菜单，改为头像下拉
   const menuItems = baseMenuItems;
 
   const handleMenuClick = (key: string) => {
@@ -122,7 +120,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const userMenu = (
     <Menu
       items={[
-        // 管理员入口放在头像下拉
         ...(user?.role === 'admin' ? [
           { key: 'admin_users', label: '用户管理', icon: <UserOutlined />, onClick: () => navigate('/admin/users') },
           { key: 'admin_history', label: '历史记录管理', icon: <HistoryOutlined />, onClick: () => navigate('/admin/history') },
@@ -151,76 +148,58 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Header 
         style={{ 
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          padding: '0 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          padding: 0,
           boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <RocketOutlined 
-            style={{ 
-              fontSize: '24px', 
-              color: 'white', 
-              marginRight: '12px' 
-            }} 
-          />
-          <Title 
-            level={3} 
-            style={{ 
-              color: 'white', 
-              margin: 0,
-              fontWeight: 'bold'
-            }}
-          >
-            洛曦 云旅Agent
-          </Title>
-        </div>
+        <div className="header-inner">
+          <div className="header-brand" style={{ display: 'flex', alignItems: 'center' }}>
+             <RocketOutlined 
+               style={{ fontSize: '24px', color: 'white', marginRight: 12 }} 
+             />
+             <Title level={3} style={{ color: 'white', margin: 0, fontWeight: 'bold' }}>
+               洛曦 云旅Agent
+             </Title>
+           </div>
 
-        {/* 桌面端菜单 */}
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <Menu
-            mode="horizontal"
-            selectedKeys={[location.pathname]}
-            items={menuItems}
-            onClick={({ key }) => handleMenuClick(key)}
-            style={{ 
-              background: 'transparent',
-              border: 'none',
-              color: 'white'
-            }}
-            theme="dark"
-          />
-          {token ? (
-            <Dropdown overlay={userMenu} placement="bottomRight">
-              <div style={{ display: 'flex', alignItems: 'center', marginLeft: 12, cursor: 'pointer' }}>
-                <Avatar icon={<UserOutlined />} src={undefined} />
-                <Typography.Text style={{ color: 'white', marginLeft: 8 }}>
-                  {user?.username || '用户'}
-                </Typography.Text>
-              </div>
-            </Dropdown>
-          ) : (
-            <Avatar
-              icon={<UserOutlined />}
-              style={{ marginLeft: 12, cursor: 'pointer', backgroundColor: 'rgba(255,255,255,0.2)' }}
-              onClick={() => navigate('/login')}
+           <Menu
+             mode="horizontal"
+             selectedKeys={[location.pathname]}
+             items={menuItems}
+             onClick={({ key }) => handleMenuClick(key)}
+             style={{ background: 'transparent', border: 'none', color: 'white' }}
+             theme="dark"
+           />
+
+          <div className="header-actions">
+            <Button type="primary" onClick={() => handleMenuClick('/plan')}>
+              创建计划
+            </Button>
+            {token ? (
+              <Dropdown overlay={userMenu} placement="bottomRight">
+                <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                  <Avatar icon={<UserOutlined />} src={undefined} />
+                  <Typography.Text style={{ color: 'white', marginLeft: 8 }}>
+                    {user?.username || '用户'}
+                  </Typography.Text>
+                </div>
+              </Dropdown>
+            ) : (
+              <Avatar
+                icon={<UserOutlined />}
+                style={{ cursor: 'pointer', backgroundColor: 'rgba(255,255,255,0.2)' }}
+                onClick={() => navigate('/login')}
+              />
+            )}
+
+            <Button
+              type="text"
+              icon={<MenuOutlined />}
+              onClick={() => setMobileMenuVisible(true)}
+              className="mobile-menu-button"
             />
-          )}
+          </div>
         </div>
-
-        {/* 移动端菜单按钮 */}
-        <Button
-          type="text"
-          icon={<MenuOutlined />}
-          onClick={() => setMobileMenuVisible(true)}
-          style={{ 
-            color: 'white',
-            display: 'none'
-          }}
-          className="mobile-menu-button"
-        />
       </Header>
 
       {/* 资料编辑弹窗 */}
@@ -264,30 +243,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </Content>
 
       <Footer 
-        style={{ 
-          textAlign: 'center',
-          background: '#f0f2f5',
-          borderTop: '1px solid #d9d9d9'
-        }}
+        style={{ textAlign: 'center', background: '#f0f2f5', borderTop: '1px solid #d9d9d9' }}
       >
         <div style={{ color: '#666' }}>
-          <p style={{ margin: '8px 0' }}>
-            © 2025 洛曦 云旅Agent. 智能旅游攻略生成器
-          </p>
-          <p style={{ margin: '8px 0', fontSize: '12px' }}>
-            基于AI技术，为您提供个性化的旅行方案规划
-          </p>
+          <p style={{ margin: '8px 0' }}>© 2025 洛曦 云旅Agent. 智能旅游攻略生成器</p>
+          <p style={{ margin: '8px 0', fontSize: '12px' }}>基于AI技术，为您提供个性化的旅行方案规划</p>
         </div>
       </Footer>
 
       {/* 移动端抽屉菜单 */}
-      <Drawer
-        title="菜单"
-        placement="right"
-        onClose={() => setMobileMenuVisible(false)}
-        open={mobileMenuVisible}
-        bodyStyle={{ padding: 0 }}
-      >
+      <Drawer title="菜单" placement="right" onClose={() => setMobileMenuVisible(false)} open={mobileMenuVisible} bodyStyle={{ padding: 0 }}>
         {mobileMenu}
       </Drawer>
 

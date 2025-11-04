@@ -1,19 +1,57 @@
 /* Layout组件样式 */
 
-/* 移动端菜单按钮 */
+/* 头部内层居中与布局 */
+.header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  height: 64px;
+  column-gap: 16px;
+}
+
+/* 品牌区域避免被菜单覆盖 */
+.header-brand {
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+/* 中间菜单与品牌留间距 */
+.header-inner .ant-menu {
+  margin-left: 8px;
+}
+
+/* 右侧动作区 */
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 移动端：隐藏顶部横向菜单，仅保留CTA和头像与抽屉按钮 */
 @media (max-width: 768px) {
-  .mobile-menu-button {
-    display: block !important;
-  }
-  
   .ant-layout-header .ant-menu {
     display: none !important;
   }
+  .mobile-menu-button {
+    display: inline-flex !important;
+    color: #fff;
+  }
 }
 
-/* 桌面端隐藏移动端按钮 */
+/* 桌面端：隐藏移动端按钮 */
 @media (min-width: 769px) {
   .mobile-menu-button {
     display: none !important;
   }
+}
+
+/* 桌面端显示快捷按钮 */
+.quick-actions {
+  display: inline-flex;
+  gap: 8px;
+  margin-right: 12px;
 }
