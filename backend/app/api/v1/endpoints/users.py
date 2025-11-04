@@ -8,6 +8,8 @@ from typing import List
 
 from app.core.database import get_async_db
 from app.models.user import User
+# 新增导入
+from app.core.security import get_current_user, is_admin
 
 router = APIRouter()
 
@@ -16,9 +18,12 @@ router = APIRouter()
 async def get_users(
     skip: int = 0,
     limit: int = 100,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """获取用户列表"""
+    """获取用户列表（仅管理员）"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅管理员可查看用户列表")
     from sqlalchemy import select
     
     result = await db.execute(
@@ -29,12 +34,19 @@ async def get_users(
     return users
 
 
+@router.get("/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    """获取当前用户信息"""
+    return current_user
+
+
 @router.get("/{user_id}")
 async def get_user(
     user_id: int,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """获取单个用户"""
+    """获取单个用户（管理员或本人）"""
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     
@@ -47,5 +59,8 @@ async def get_user(
     
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+    
+    if not (is_admin(current_user) or current_user.id == user_id):
+        raise HTTPException(status_code=403, detail="仅管理员或本人可查看该信息")
     
     return user

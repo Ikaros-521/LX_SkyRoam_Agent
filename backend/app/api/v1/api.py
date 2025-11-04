@@ -3,11 +3,17 @@ API v1 路由汇总
 """
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection
+from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth
 
 api_router = APIRouter()
 
 # 注册各个端点路由
+api_router.include_router(
+    auth.router,
+    prefix="/auth",
+    tags=["auth"]
+)
+
 api_router.include_router(
     travel_plans.router, 
     prefix="/travel-plans", 

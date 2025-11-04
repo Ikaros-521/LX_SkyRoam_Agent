@@ -21,6 +21,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
+import { authFetch } from '../../utils/auth';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -51,7 +52,7 @@ const HistoryPage: React.FC = () => {
   const fetchPlans = async () => {
     try {
       setLoading(true);
-      const response = await fetch(
+      const response = await authFetch(
         buildApiUrl(`/travel-plans/?skip=${(currentPage - 1) * pageSize}&limit=${pageSize}`)
       );
       
@@ -79,7 +80,7 @@ const HistoryPage: React.FC = () => {
 
   const handleDeletePlan = async (planId: number) => {
     try {
-      const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_DETAIL(planId)), {
+      const response = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_DETAIL(planId)), {
         method: 'DELETE',
       });
 

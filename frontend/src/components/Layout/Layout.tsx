@@ -10,6 +10,8 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './Layout.css';
+// 新增导入
+import { getToken, clearToken } from '../../utils/auth';
 
 const { Header, Content, Footer } = AntLayout;
 const { Title } = Typography;
@@ -22,33 +24,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuVisible, setMobileMenuVisible] = useState(false);
+  const token = getToken();
 
+  // 新增：统一的菜单项定义
   const menuItems = [
-    {
-      key: '/',
-      icon: <HomeOutlined />,
-      label: '首页',
-    },
-    {
-      key: '/plan',
-      icon: <CalendarOutlined />,
-      label: '创建计划',
-    },
-    {
-      key: '/history',
-      icon: <HistoryOutlined />,
-      label: '历史记录',
-    },
-    {
-      key: '/about',
-      icon: <InfoCircleOutlined />,
-      label: '关于我们',
-    },
+    { key: '/', label: '首页', icon: <HomeOutlined /> },
+    { key: '/plan', label: '创建计划', icon: <CalendarOutlined /> },
+    { key: '/history', label: '历史记录', icon: <HistoryOutlined /> },
+    { key: '/about', label: '关于我们', icon: <InfoCircleOutlined /> },
   ];
 
   const handleMenuClick = (key: string) => {
     navigate(key);
     setMobileMenuVisible(false);
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    navigate('/login');
   };
 
   const mobileMenu = (
@@ -107,6 +100,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             }}
             theme="dark"
           />
+          {/* 认证入口 */}
+          {token ? (
+            <Button style={{ marginLeft: 12 }} onClick={handleLogout}>退出</Button>
+          ) : (
+            <>
+              <Button type="text" style={{ color: 'white', marginLeft: 12 }} onClick={() => navigate('/login')}>登录</Button>
+              <Button type="primary" style={{ marginLeft: 8 }} onClick={() => navigate('/register')}>注册</Button>
+            </>
+          )}
         </div>
 
         {/* 移动端菜单按钮 */}

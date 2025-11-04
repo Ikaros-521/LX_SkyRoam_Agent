@@ -3,6 +3,7 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
+pydantic[email]==2.5.0
 
 # Database
 sqlalchemy==2.0.23
@@ -67,7 +68,7 @@ mypy==1.7.1
 asyncpg==0.30.0
 psutil==7.1.0
 
-mcp-server-baidu-maps
+# mcp-server-baidu-maps
 
 # 爬虫
 tenacity==8.2.2

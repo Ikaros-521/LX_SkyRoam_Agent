@@ -29,7 +29,8 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { buildApiUrl, API_ENDPOINTS, REQUEST_CONFIG } from '../../config/api';
+import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
+import { authFetch } from '../../utils/auth';
 
 const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -121,9 +122,9 @@ const TravelPlanPage: React.FC = () => {
     
     try {
       // 创建旅行计划
-      const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLANS), {
+      const response = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLANS), {
         method: 'POST',
-        headers: REQUEST_CONFIG.headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: `${values.departure} → ${values.destination} 旅行计划`, // 自动生成标题
           departure: values.departure,
@@ -144,8 +145,7 @@ const TravelPlanPage: React.FC = () => {
             special_requirements: values.requirements,
             travelers_count: values.travelers,
             dietary_info: values.dietaryRestrictions?.join(', ') || ''
-          },
-          user_id: 1 // 临时用户ID
+          }
         }),
       });
 
@@ -180,9 +180,9 @@ const TravelPlanPage: React.FC = () => {
     
     try {
       // 启动方案生成
-      const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_GENERATE(planId)), {
+      const response = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_GENERATE(planId)), {
         method: 'POST',
-        headers: REQUEST_CONFIG.headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           preferences: {
             budget_priority: preferences.budget < 3000 ? 'low' : 'medium',
@@ -218,7 +218,7 @@ const TravelPlanPage: React.FC = () => {
         pollCount++;
         console.log(`轮询状态 ${pollCount}/${maxPolls}: 计划 ${planId}`);
         
-        const response = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_STATUS(planId)));
+        const response = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_STATUS(planId)));
         const status = await response.json();
         
         // 动态更新进度，基于轮询次数
@@ -248,23 +248,9 @@ const TravelPlanPage: React.FC = () => {
           console.log('轮询超时，已达到最大次数');
         }
       } catch (error) {
-        console.error('查询状态失败:', error);
-        // 网络错误不停止轮询，继续尝试
-        if (pollCount >= maxPolls) {
-          clearInterval(pollInterval);
-          setGenerationStatus('timeout');
-        }
+        console.error('轮询状态失败:', error);
       }
     }, 6000);
-
-    // 备用超时机制：10分钟后强制停止
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      if (generationStatus === 'generating') {
-        setGenerationStatus('timeout');
-        console.log('轮询超时，60分钟强制停止');
-      }
-    }, 3600000); // 60分钟
   };
 
   const getStatusAlert = () => {

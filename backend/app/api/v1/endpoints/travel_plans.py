@@ -20,6 +20,10 @@ from loguru import logger
 from fastapi.responses import HTMLResponse, JSONResponse, Response, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
 
+# 新增导入
+from app.core.security import get_current_user, is_admin
+from app.models.user import User
+
 router = APIRouter()
 
 
@@ -59,11 +63,14 @@ async def generate_travel_plans_task(
 @router.post("/", response_model=TravelPlanResponse)
 async def create_travel_plan(
     plan_data: TravelPlanCreate,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """创建新的旅行计划"""
+    """创建新的旅行计划（绑定到当前用户）"""
     service = TravelPlanService(db)
-    return await service.create_travel_plan(plan_data)
+    data = plan_data.dict()
+    data["user_id"] = current_user.id
+    return await service.create_travel_plan(TravelPlanCreate(**data))
 
 
 @router.get("/")
@@ -72,34 +79,40 @@ async def get_travel_plans(
     limit: int = 100,
     user_id: Optional[int] = None,
     status: Optional[str] = None,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """获取旅行计划列表"""
+    """获取旅行计划列表（普通用户仅能查看自己的，管理员可查看所有）"""
     service = TravelPlanService(db)
+    # 非管理员强制限定为当前用户
+    effective_user_id = user_id if is_admin(current_user) else current_user.id
     plans, total = await service.get_travel_plans_with_total(
-        skip=skip, 
-        limit=limit, 
-        user_id=user_id, 
-        status=status
+        skip=skip,
+        limit=limit,
+        user_id=effective_user_id,
+        status=status,
     )
     return {
         "plans": plans,
         "total": total,
         "skip": skip,
-        "limit": limit
+        "limit": limit,
     }
 
 
 @router.get("/{plan_id}", response_model=TravelPlanResponse)
 async def get_travel_plan(
     plan_id: int,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """获取单个旅行计划"""
+    """获取单个旅行计划（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
     return plan
 
 
@@ -107,23 +120,33 @@ async def get_travel_plan(
 async def update_travel_plan(
     plan_id: int,
     plan_data: TravelPlanUpdate,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """更新旅行计划"""
+    """更新旅行计划（需拥有或管理员）"""
     service = TravelPlanService(db)
-    plan = await service.update_travel_plan(plan_id, plan_data)
+    plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权更新该计划")
+    plan = await service.update_travel_plan(plan_id, plan_data)
     return plan
 
 
 @router.delete("/{plan_id}")
 async def delete_travel_plan(
     plan_id: int,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """删除旅行计划"""
+    """删除旅行计划（需拥有或管理员）"""
     service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权删除该计划")
     success = await service.delete_travel_plan(plan_id)
     if not success:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
@@ -135,48 +158,48 @@ async def generate_travel_plans(
     plan_id: int,
     request: TravelPlanGenerateRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """生成旅行方案"""
+    """生成旅行方案（需拥有或管理员）"""
     service = TravelPlanService(db)
     agent_service = AgentService(db)
-    
-    # 检查计划是否存在
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
-    
-    # 启动后台任务生成方案
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权生成该计划")
     background_tasks.add_task(
         generate_travel_plans_task,
         plan_id,
         request.preferences,
-        request.requirements
+        request.requirements,
     )
-    
     return {
         "message": "旅行方案生成任务已启动",
         "plan_id": plan_id,
-        "status": "generating"
+        "status": "generating",
     }
 
 
 @router.get("/{plan_id}/status")
 async def get_generation_status(
     plan_id: int,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """获取方案生成状态"""
+    """获取方案生成状态（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
-    
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权查看该计划状态")
     return {
         "plan_id": plan_id,
         "status": plan.status,
         "generated_plans": plan.generated_plans,
-        "selected_plan": plan.selected_plan
+        "selected_plan": plan.selected_plan,
     }
 
 
@@ -184,20 +207,22 @@ async def get_generation_status(
 async def select_travel_plan(
     plan_id: int,
     request_data: dict,
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """选择最终旅行方案"""
+    """选择最终旅行方案（需拥有或管理员）"""
     service = TravelPlanService(db)
-    
-    # 从请求体中获取plan_index
-    plan_index = request_data.get('plan_index')
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权选择该计划方案")
+    plan_index = request_data.get("plan_index")
     if plan_index is None:
         raise HTTPException(status_code=400, detail="缺少plan_index参数")
-    
     success = await service.select_plan(plan_id, plan_index)
     if not success:
         raise HTTPException(status_code=400, detail="选择方案失败")
-    
     return {"message": "方案选择成功"}
 
 
@@ -263,34 +288,34 @@ def _render_plan_html(plan_data: dict) -> str:
 async def export_travel_plan(
     plan_id: int,
     format: str = "pdf",  # pdf, json, html
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """导出旅行计划（支持GET，返回json/html，pdf暂未实现）"""
+    """导出旅行计划（需拥有或管理员）"""
     allowed = {"json", "html", "pdf"}
     if format not in allowed:
         raise HTTPException(status_code=400, detail=f"不支持的导出格式: {format}")
-    
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
-    
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权导出该计划")
     plan_data = TravelPlanResponse.from_orm(plan).dict()
-    
     if format == "json":
         return JSONResponse(content=jsonable_encoder(plan_data))
     elif format == "html":
         html = _render_plan_html(plan_data)
         return HTMLResponse(content=html)
     else:  # pdf
-        # 这里可以集成 PDF 生成（如 WeasyPrint/xhtml2pdf），暂时返回提示
         return PlainTextResponse(content="PDF 导出暂未实现", status_code=501)
 
 @router.post("/{plan_id}/export")
 async def export_travel_plan_post(
     plan_id: int,
     format: str = "pdf",  # pdf, json, html
-    db: AsyncSession = Depends(get_async_db)
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
     """导出旅行计划（POST，同步返回，与GET一致）"""
-    return await export_travel_plan(plan_id=plan_id, format=format, db=db)
+    return await export_travel_plan(plan_id=plan_id, format=format, db=db, current_user=current_user)
