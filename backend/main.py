@@ -29,6 +29,7 @@ from app.core.database import init_db
 from app.api.v1.api import api_router
 from app.core.redis import init_redis
 from app.services.background_tasks import start_background_tasks
+from app.core.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -79,6 +80,9 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=settings.ALLOWED_HOSTS
 )
+
+# 限流中间件（按IP）
+app.add_middleware(RateLimitMiddleware)
 
 # 注册API路由
 app.include_router(api_router, prefix="/api/v1")

@@ -131,6 +131,14 @@ class Settings(BaseSettings):
         "popularity": 0.1
     }
 
+    # 限流配置
+    RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+    RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "20"))
+    RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "10"))
+    RATE_LIMIT_WHITELIST: List[str] = os.getenv("RATE_LIMIT_WHITELIST", "").split(",") if os.getenv("RATE_LIMIT_WHITELIST") else []
+    # 允许通过环境变量覆盖：逗号分隔的路径
+    RATE_LIMIT_EXCLUDE_PATHS: List[str] = os.getenv("RATE_LIMIT_EXCLUDE_PATHS", "/docs,/redoc,/openapi.json").split(",")
+
 # 创建全局配置实例
 settings = Settings()
 
