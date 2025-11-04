@@ -14,6 +14,9 @@ import AboutPage from './pages/AboutPage/AboutPage';
 import TestPage from './pages/TestPage/TestPage';
 import LoginPage from './pages/LoginPage/LoginPage';
 import RegisterPage from './pages/RegisterPage/RegisterPage';
+import RequireAdmin from './components/Auth/RequireAdmin';
+import UsersAdminPage from './pages/Admin/UsersAdminPage';
+import HistoryAdminPage from './pages/Admin/HistoryAdminPage';
 
 const App: React.FC = () => {
   return (
@@ -30,6 +33,8 @@ const App: React.FC = () => {
               <Route path="/about" element={<AboutPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
+              <Route path="/admin/history" element={<RequireAdmin><HistoryAdminPage /></RequireAdmin>} />
             </Routes>
           </Layout>
         </div>

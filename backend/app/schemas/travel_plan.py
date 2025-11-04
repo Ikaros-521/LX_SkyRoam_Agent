@@ -161,3 +161,8 @@ class TravelPlanExportRequest(BaseModel):
     include_images: bool = Field(True, description="是否包含图片")
     include_map: bool = Field(True, description="是否包含地图")
     language: str = Field("zh", description="导出语言")
+
+
+class TravelPlanBatchDeleteRequest(BaseModel):
+    """批量删除旅行计划请求体"""
+    ids: List[int] = Field(..., description="要删除的旅行计划ID列表", min_length=1)

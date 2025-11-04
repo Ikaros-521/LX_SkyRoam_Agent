@@ -136,3 +136,13 @@ class TravelPlanService:
         await self.db.commit()
         
         return True
+
+    async def delete_travel_plans(self, ids: List[int]) -> int:
+        """批量删除旅行计划，返回删除条数"""
+        if not ids:
+            return 0
+        result = await self.db.execute(
+            delete(TravelPlan).where(TravelPlan.id.in_(ids))
+        )
+        await self.db.commit()
+        return result.rowcount or 0

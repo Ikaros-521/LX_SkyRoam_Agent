@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
   TRAVEL_PLAN_GENERATE: (id: number) => `/travel-plans/${id}/generate`,
   TRAVEL_PLAN_STATUS: (id: number) => `/travel-plans/${id}/status`,
   TRAVEL_PLAN_SELECT: (id: number) => `/travel-plans/${id}/select-plan`,
+  TRAVEL_PLANS_BATCH_DELETE: '/travel-plans/batch-delete',
   
   // 目的地
   DESTINATIONS: '/destinations',
@@ -25,6 +26,7 @@ export const API_ENDPOINTS = {
   // 用户
   USERS: '/users',
   USER_DETAIL: (id: number) => `/users/${id}`,
+  USER_RESET_PASSWORD: (id: number) => `/users/${id}/reset-password`,
   
   // Agent
   AGENTS: '/agents',

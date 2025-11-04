@@ -12,7 +12,8 @@ from app.schemas.travel_plan import (
     TravelPlanCreate, 
     TravelPlanUpdate, 
     TravelPlanResponse,
-    TravelPlanGenerateRequest
+    TravelPlanGenerateRequest,
+    TravelPlanBatchDeleteRequest
 )
 from app.services.travel_plan_service import TravelPlanService
 from app.services.agent_service import AgentService
@@ -153,6 +154,20 @@ async def delete_travel_plan(
     return {"message": "旅行计划已删除"}
 
 
+@router.post("/batch-delete")
+async def batch_delete_travel_plans(
+    payload: TravelPlanBatchDeleteRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """批量删除旅行计划（仅管理员）"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="仅管理员可批量删除")
+    service = TravelPlanService(db)
+    deleted_count = await service.delete_travel_plans(payload.ids)
+    return {"deleted": deleted_count}
+
+
 @router.post("/{plan_id}/generate")
 async def generate_travel_plans(
     plan_id: int,
@@ -225,6 +240,16 @@ async def select_travel_plan(
         raise HTTPException(status_code=400, detail="选择方案失败")
     return {"message": "方案选择成功"}
 
+
+@router.post("/{plan_id}/export")
+async def export_travel_plan_post(
+    plan_id: int,
+    format: str = "pdf",  # pdf, json, html
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """导出旅行计划（POST，同步返回，与GET一致）"""
+    return await export_travel_plan(plan_id=plan_id, format=format, db=db, current_user=current_user)
 
 def _render_plan_html(plan_data: dict) -> str:
     title = plan_data.get("title") or f"旅行方案 #{plan_data.get('id', '')}"

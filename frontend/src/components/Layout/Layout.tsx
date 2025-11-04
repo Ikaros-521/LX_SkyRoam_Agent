@@ -54,12 +54,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [token]);
 
   // 新增：统一的菜单项定义
-  const menuItems = [
+  const baseMenuItems = [
     { key: '/', label: '首页', icon: <HomeOutlined /> },
     { key: '/plan', label: '创建计划', icon: <CalendarOutlined /> },
     { key: '/history', label: '历史记录', icon: <HistoryOutlined /> },
     { key: '/about', label: '关于我们', icon: <InfoCircleOutlined /> },
   ];
+  const adminMenuItems = user?.role === 'admin' ? [
+    { key: '/admin/users', label: '用户管理', icon: <UserOutlined /> },
+    { key: '/admin/history', label: '历史记录管理', icon: <HistoryOutlined /> },
+  ] : [];
+  const menuItems = [...baseMenuItems, ...adminMenuItems];
 
   const handleMenuClick = (key: string) => {
     navigate(key);
