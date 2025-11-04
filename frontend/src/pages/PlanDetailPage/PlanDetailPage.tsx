@@ -406,7 +406,7 @@ const PlanDetailPage: React.FC = () => {
                                                           </Tag>
                                                         </Col>
                                                       )}
-                                                      {attraction.price && (
+                                                      {(attraction.price !== undefined && attraction.price !== null) && (
                                                         <Col>
                                                           <Tag color="blue" style={{ fontSize: '10px', margin: '0 2px 2px 0', padding: '2px 6px', lineHeight: '16px' }}>
                                                             <DollarOutlined style={{ fontSize: '8px' }} /> {attraction.price}
