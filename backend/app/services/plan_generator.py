@@ -1061,9 +1061,9 @@ class PlanGenerator:
             # 选择最佳酒店
             hotel = self._select_best_hotel(processed_data.get("hotels", []), plan_type)
             
-            # 生成每日行程
+            # 生成每日行程（传递小红书数据）
             daily_itineraries = await self._generate_daily_itineraries(
-                processed_data, plan, preferences, plan_type
+                processed_data, plan, preferences, plan_type, raw_data
             )
             
             # 选择餐厅
@@ -1152,9 +1152,147 @@ class PlanGenerator:
         processed_data: Dict[str, Any],
         plan: Any,
         preferences: Optional[Dict[str, Any]],
+        plan_type: str,
+        raw_data: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """使用LLM基于小红书内容生成每日行程"""
+        try:
+            # 获取小红书笔记数据
+            xiaohongshu_notes = raw_data.get('xiaohongshu_notes', []) if raw_data else []
+            
+            # 如果有小红书数据，使用LLM生成行程
+            if xiaohongshu_notes:
+                return await self._generate_daily_itineraries_with_llm(
+                    processed_data, plan, preferences, plan_type, xiaohongshu_notes
+                )
+            else:
+                # 回退到原有逻辑
+                return await self._generate_daily_itineraries_fallback(
+                    processed_data, plan, preferences, plan_type
+                )
+                
+        except Exception as e:
+            logger.error(f"生成每日行程失败: {e}")
+            # 出错时使用回退逻辑
+            return await self._generate_daily_itineraries_fallback(
+                processed_data, plan, preferences, plan_type
+            )
+
+    async def _generate_daily_itineraries_with_llm(
+        self,
+        processed_data: Dict[str, Any],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]],
+        plan_type: str,
+        xiaohongshu_notes: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """使用LLM基于小红书内容生成每日行程"""
+        try:
+            system_prompt = f"""你是一个专业的旅行规划师，需要基于真实的小红书用户分享内容来制定详细的每日旅行行程。
+
+请根据以下信息生成{plan.duration_days}天的详细行程安排：
+
+要求：
+1. 每天的行程要合理安排时间，包含上午、下午、晚上的活动
+2. 景点安排要考虑地理位置，优化游览路线
+3. 结合小红书用户的真实体验和建议
+4. 包含具体的时间安排、交通方式、预估费用
+5. 为每个景点/活动提供详细的游览建议和注意事项
+6. 根据方案类型({plan_type})调整活动强度和选择
+
+返回JSON格式，结构如下：
+[
+  {{
+    "day": 1,
+    "date": "2024-01-01",
+    "theme": "行程主题",
+    "activities": [
+      {{
+        "time": "09:00-11:00",
+        "type": "景点",
+        "name": "景点名称",
+        "description": "详细描述和游览建议",
+        "location": "具体地址",
+        "transportation": "交通方式",
+        "estimated_cost": 50,
+        "tips": "实用小贴士"
+      }}
+    ],
+    "meals": [
+      {{
+        "time": "12:00-13:00",
+        "type": "午餐",
+        "name": "餐厅名称",
+        "description": "推荐菜品和特色",
+        "estimated_cost": 80
+      }}
+    ],
+    "total_estimated_cost": 200
+  }}
+]"""
+
+            user_prompt = f"""旅行信息：
+目的地：{plan.destination}
+旅行天数：{plan.duration_days}天
+开始日期：{plan.start_date}
+旅行人数：{plan.num_people}人
+年龄群体：{plan.age_group}
+预算范围：{plan.budget}
+方案类型：{plan_type}
+特殊要求：{plan.requirements or '无特殊要求'}
+用户偏好：{preferences or '无特殊偏好'}
+
+小红书真实用户体验分享：
+{self._format_xiaohongshu_data_for_prompt(xiaohongshu_notes, plan.destination)}
+
+可用景点数据（作为参考）：
+{self._format_data_for_llm(processed_data.get('attractions', []), 'attraction')}
+
+请基于小红书用户的真实体验和建议，生成详细的每日行程安排。优先采用小红书中提到的景点、餐厅和活动，确保行程的真实性和可操作性。
+
+请直接返回JSON格式结果。"""
+
+            logger.info(f"使用LLM生成每日行程，目的地: {plan.destination}, 天数: {plan.duration_days}")
+
+            response = await openai_client.generate_text(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=settings.OPENAI_MAX_TOKENS,
+                temperature=0.7
+            )
+
+            cleaned_response = self._clean_llm_response(response)
+            try:
+                result = json.loads(cleaned_response)
+            except json.JSONDecodeError:
+                logger.warning(f"LLM生成每日行程失败，返回结果格式不正确，使用回退逻辑")
+                return await self._generate_daily_itineraries_fallback(
+                    processed_data, plan, preferences, plan_type
+                )
+            
+            if not isinstance(result, list) or len(result) != plan.duration_days:
+                logger.warning("每日行程返回格式不正确，使用回退逻辑")
+                return await self._generate_daily_itineraries_fallback(
+                    processed_data, plan, preferences, plan_type
+                )
+                
+            logger.info(f"成功生成{len(result)}天的LLM行程")
+            return result
+
+        except Exception as e:
+            logger.error(f"LLM生成每日行程失败: {e}")
+            return await self._generate_daily_itineraries_fallback(
+                processed_data, plan, preferences, plan_type
+            )
+
+    async def _generate_daily_itineraries_fallback(
+        self,
+        processed_data: Dict[str, Any],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]],
         plan_type: str
     ) -> List[Dict[str, Any]]:
-        """生成每日行程"""
+        """回退的每日行程生成逻辑（原有逻辑）"""
         attractions = processed_data.get("attractions", [])
         daily_itineraries = []
         
@@ -1766,13 +1904,21 @@ class PlanGenerator:
         """生成景点游玩方案"""
         try:
             system_prompt = """你是一个专业的景点规划师，专门为游客规划景点游览行程。
-请根据提供的真实景点数据，为用户的每一天生成详细的景点游览安排。
+请根据提供的真实景点数据和小红书用户的实际体验分享，为用户的每一天生成详细的景点游览安排。
+
+重要指导原则：
+1. 充分利用小红书攻略中的实用建议，如最佳游览时间、推荐路线、避坑指南等
+2. 提取攻略中的具体细节，如"早上8点半开门就进去人少"、"午门进神武门出"等实用信息
+3. 结合攻略中的个人体验，提供更贴近实际的游览建议
+4. 参考攻略中提到的必看亮点、拍照位置、省钱技巧等
+5. 注意攻略中的时间安排建议和注意事项
 
 每天的游览安排应该包含：
-1. 景点选择和游览顺序
-2. 详细的时间安排和游览建议
-3. 景点亮点和拍照推荐
-4. 门票费用和开放时间
+1. 基于攻略经验的景点选择和最优游览顺序
+2. 参考真实用户体验的详细时间安排
+3. 攻略中提到的景点亮点和必看内容
+4. 实用的游览技巧和避坑建议
+5. 门票费用和开放时间信息
 
 请严格按照以下JSON格式返回：
 [
@@ -1784,9 +1930,9 @@ class PlanGenerator:
         "time": "09:00-12:00",
         "activity": "景点游览",
         "location": "具体景点名称",
-        "description": "详细的游览内容和亮点",
+        "description": "结合攻略经验的详细游览内容，包含必看亮点和推荐体验",
         "cost": 门票价格,
-        "tips": "游览建议和注意事项"
+        "tips": "基于真实用户体验的游览建议，包含时间安排、路线选择、避坑指南等实用信息"
       }
     ],
     "attractions": [
@@ -1798,14 +1944,16 @@ class PlanGenerator:
         "rating": 评分,
         "visit_time": "建议游览时间",
         "opening_hours": "开放时间",
-        "best_visit_time": "最佳游览时段",
-        "highlights": ["亮点1", "亮点2"],
-        "photography_spots": ["拍照点1", "拍照点2"],
-        "address": "景点地址"
+        "best_visit_time": "基于攻略经验的最佳游览时段",
+        "highlights": ["攻略中提到的亮点1", "必看内容2", "特色体验3"],
+        "photography_spots": ["攻略推荐的拍照点1", "网红打卡地2"],
+        "address": "景点地址",
+        "route_tips": "攻略中的路线建议和游览顺序",
+        "experience_tips": ["基于真实体验的实用建议1", "省钱技巧2", "避坑指南3"]
       }
     ],
     "estimated_cost": 当日景点费用,
-    "daily_tips": ["当日游览建议1", "注意事项2", "省钱小贴士3"]
+    "daily_tips": ["基于攻略的当日游览建议", "真实用户的注意事项", "实用的省钱和避坑小贴士"]
   }
 ]"""
 
@@ -1826,13 +1974,19 @@ class PlanGenerator:
 小红书真实用户景点体验分享：
 {self._format_xiaohongshu_data_for_prompt(raw_data.get('xiaohongshu_notes', []) if raw_data else [], plan.destination)}
 
-要求：
-1. 根据年龄群体调整景点选择和活动强度
-2. 景点安排要考虑地理位置，优化游览路线
-3. 为每个景点提供详细的游览建议
-4. 包含开放时间、最佳游览时段等实用信息
-5. 根据旅行人数安排合适的活动
-6. 必须使用提供的真实景点数据
+重要要求：
+1. **深度利用小红书攻略**：仔细分析每条攻略中的具体建议，如游览路线、时间安排、必看亮点等
+2. **提取实用细节**：将攻略中的具体操作建议融入到游览安排中，如"早上8点半开门就进去"、"午门进神武门出"等
+3. **结合真实体验**：基于攻略中的个人体验和感受，提供更贴近实际的游览建议
+4. **优化时间安排**：参考攻略中的时间建议，合理安排每个景点的游览时长和最佳时段
+5. **包含避坑指南**：整合攻略中的注意事项和避坑建议，帮助用户避免常见问题
+6. **路线优化**：根据攻略中的路线建议和地理位置，优化景点游览顺序
+7. **必须使用提供的真实景点数据**：确保所有推荐的景点都在提供的数据范围内
+
+请特别注意：
+- 将小红书攻略中的具体建议转化为可操作的游览安排
+- 结合攻略中的个人感受和推荐，提供更有温度的旅行建议
+- 利用攻略中的省钱技巧和实用信息，为用户提供更好的旅行体验
 
 请直接返回JSON格式结果。
 """

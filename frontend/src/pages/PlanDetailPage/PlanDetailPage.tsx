@@ -41,6 +41,40 @@ import MapComponent from '../../components/MapComponent/MapComponent';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
+// 景点接口定义
+interface Attraction {
+  name: string;
+  category: string;
+  description: string;
+  price: number;
+  rating: number;
+  visit_time: string;
+  opening_hours: string;
+  best_visit_time?: string;
+  highlights?: string[];
+  photography_spots?: string[];
+  address: string;
+  route_tips?: string;
+  experience_tips?: string[];
+}
+
+// 每日行程接口定义
+interface DailyItinerary {
+  day: number;
+  date: string;
+  schedule: Array<{
+    time: string;
+    activity: string;
+    location: string;
+    description: string;
+    cost: number;
+    tips: string;
+  }>;
+  attractions: Attraction[];
+  estimated_cost: number;
+  daily_tips?: string[];
+}
+
 interface PlanDetail {
   id: number;
   title: string;
@@ -475,6 +509,49 @@ const PlanDetailPage: React.FC = () => {
                                                     </Text>
                                                   </div>
                                                 )}
+
+                                                {/* 路线建议 */}
+                                                {attraction.route_tips && (
+                                                  <div style={{
+                                                    marginTop: '4px',
+                                                    padding: '4px 6px',
+                                                    backgroundColor: '#f0f5ff',
+                                                    borderRadius: '4px',
+                                                    border: '1px solid #adc6ff'
+                                                  }}>
+                                                    <Text style={{ fontSize: '9px', color: '#1d39c4' }}>
+                                                      <EnvironmentOutlined style={{ marginRight: '2px' }} />
+                                                      路线建议：{attraction.route_tips}
+                                                    </Text>
+                                                  </div>
+                                                )}
+
+                                                {/* 体验建议 */}
+                                                {attraction.experience_tips && attraction.experience_tips.length > 0 && (
+                                                  <div style={{
+                                                    marginTop: '4px',
+                                                    padding: '4px 6px',
+                                                    backgroundColor: '#fff0f6',
+                                                    borderRadius: '4px',
+                                                    border: '1px solid #ffadd2'
+                                                  }}>
+                                                    <Text style={{ fontSize: '9px', color: '#c41d7f' }}>
+                                                      <StarOutlined style={{ marginRight: '2px' }} />
+                                                      体验建议：
+                                                    </Text>
+                                                    <div style={{ marginTop: '2px' }}>
+                                                      {attraction.experience_tips.slice(0, 4).map((tip: string, tipIndex: number) => (
+                                                        <Tag
+                                                          key={tipIndex}
+                                                          color="magenta"
+                                                          style={{ fontSize: '9px', margin: '1px 2px', padding: '1px 4px', lineHeight: '14px' }}
+                                                        >
+                                                          {tip}
+                                                        </Tag>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                )}
                                               </Space>
                                             </div>
                                           </Space>
@@ -660,6 +737,26 @@ const PlanDetailPage: React.FC = () => {
                                 <Text>¥{day.estimated_cost}</Text>
                               </Col>
                             </Row>
+
+                            <Divider />
+                            {day.daily_tips && day.daily_tips.length > 0 && (
+                              <div style={{ marginTop: '4px' }}>
+                                <Text strong style={{ color: '#1890ff' }}>
+                                  当日建议
+                                </Text>
+                                <div style={{ marginTop: '4px' }}>
+                                  {day.daily_tips.map((tip: string, tipIndex: number) => (
+                                    <Tag
+                                      key={tipIndex}
+                                      color="geekblue"
+                                      style={{ fontSize: '10px', margin: '2px', padding: '2px 6px', lineHeight: '16px' }}
+                                    >
+                                      {tip}
+                                    </Tag>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </Space>
                         </Card>
                       </List.Item>
