@@ -31,7 +31,13 @@ import {
   CheckCircleOutlined,
   LoadingOutlined,
   UserOutlined,
-  HeartOutlined
+  HeartOutlined,
+  EnvironmentOutlined,
+  StarFilled,
+  FireOutlined,
+  LinkOutlined,
+  ClockCircleOutlined,
+  PictureOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -83,13 +89,37 @@ const TravelPlanPage: React.FC = () => {
   );
 
   const getImage = (item: any) => {
-    const candidates = [
-      item?.cover_url,
-      item?.image_url,
-      item?.thumbnail,
-      Array.isArray(item?.images) ? item.images[0] : undefined,
-      Array.isArray(item?.photos) ? item.photos[0] : undefined,
-    ];
+    const pickUrl = (u: any) => {
+      if (!u) return undefined;
+      const s = String(u).trim().replace(/[`"]/g, '');
+      return s.split(/\s+/)[0];
+    };
+    const candidates: (string | undefined)[] = [];
+
+    // 小红书优先使用 img_urls
+    if (Array.isArray(item?.img_urls) && item.img_urls.length) {
+      candidates.push(pickUrl(item.img_urls[0]));
+    }
+
+    // 常见图片字段
+    candidates.push(
+      pickUrl(item?.cover_url),
+      pickUrl(item?.image_url),
+      pickUrl(item?.thumbnail)
+    );
+
+    // images 可能是字符串或对象
+    if (Array.isArray(item?.images) && item.images.length) {
+      const img0 = item.images[0];
+      candidates.push(pickUrl(typeof img0 === 'string' ? img0 : img0?.url));
+    }
+
+    // photos 可能是字符串或对象（如高德返回 { url }）
+    if (Array.isArray(item?.photos) && item.photos.length) {
+      const p0 = item.photos[0];
+      candidates.push(pickUrl(typeof p0 === 'string' ? p0 : p0?.url));
+    }
+
     return candidates.find((u) => typeof u === 'string' && u.length > 0);
   };
 
@@ -409,7 +439,7 @@ const TravelPlanPage: React.FC = () => {
       {generationStatus === 'generating' && previewData && (
         <Card title={previewData.title || '数据预览'} style={{ marginBottom: '24px' }}>
           <Tabs
-            defaultActiveKey="xhs"
+            defaultActiveKey="weather"
             items={[
               {
                 key: 'weather',
@@ -530,19 +560,37 @@ const TravelPlanPage: React.FC = () => {
                       style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
                       renderItem={(a: any) => {
                         const cover = getImage(a);
+                        const title = getTitle(a, '景点');
+                        const desc = getDesc(a);
                         return (
                           <List.Item>
                             <Card
                               hoverable
                               cover={
                                 cover ? (
-                                  <Image src={cover} alt={getTitle(a)} height={160} style={{ objectFit: 'cover' }} />
+                                  <div style={{ position: 'relative', height: 160, overflow: 'hidden' }}>
+                                    <Image src={cover} alt={title} height={160} style={{ objectFit: 'cover', width: '100%' }} />
+                                    {a?.rating && (
+                                      <Tag color="gold" style={{ position: 'absolute', top: 8, right: 8 }}>
+                                        <StarFilled /> {a.rating}
+                                      </Tag>
+                                    )}
+                                  </div>
                                 ) : undefined
                               }
                             >
                               <Space direction="vertical" size={8}>
-                                <div style={{ fontWeight: 600 }}>{getTitle(a, '景点')}</div>
-                                {getDesc(a) && <div style={{ color: '#666' }}>{getDesc(a)}</div>}
+                                <div style={{ fontWeight: 600 }}>{title}</div>
+                                <Space wrap size={6}>
+                                  {a?.category && <Tag>{a.category}</Tag>}
+                                  {a?.business_area && <Tag color="green">{a.business_area}</Tag>}
+                                  {a?.distance && <Tag color="blue">距 {a.distance}m</Tag>}
+                                  {a?.price_range && <Tag color="orange">{a.price_range}</Tag>}
+                                </Space>
+                                {a?.address && (
+                                  <Text type="secondary">{a.address}</Text>
+                                )}
+                                {desc && <div style={{ color: '#666' }}>{desc}</div>}
                               </Space>
                             </Card>
                           </List.Item>
@@ -565,23 +613,43 @@ const TravelPlanPage: React.FC = () => {
                       style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
                       renderItem={(r: any) => {
                         const cover = getImage(r);
+                        const title = getTitle(r, '餐厅');
+                        const desc = getDesc(r);
+                        const price = getPrice(r);
                         return (
                           <List.Item>
                             <Card
                               hoverable
                               cover={
                                 cover ? (
-                                  <Image src={cover} alt={getTitle(r)} height={160} style={{ objectFit: 'cover' }} />
+                                  <div style={{ position: 'relative', height: 160, overflow: 'hidden' }}>
+                                    <Image src={cover} alt={title} height={160} style={{ objectFit: 'cover', width: '100%' }} />
+                                    {r?.rating && (
+                                      <Tag color="gold" style={{ position: 'absolute', top: 8, right: 8 }}>
+                                        <StarFilled /> {r.rating}
+                                      </Tag>
+                                    )}
+                                  </div>
                                 ) : undefined
                               }
                             >
                               <Space direction="vertical" size={8}>
-                                <div style={{ fontWeight: 600 }}>{getTitle(r, '餐厅')}</div>
-                                <Space size={8}>
-                                  {r?.rating && <Tag color="gold">评分 {r.rating}</Tag>}
-                                  {getPrice(r) && <Tag color="orange">{getPrice(r)}</Tag>}
+                                <div style={{ fontWeight: 600 }}>{title}</div>
+                                <Space wrap size={6}>
+                                  {price && <Tag color="orange">{price}</Tag>}
+                                  {r?.price_range && <Tag color="orange">{r.price_range}</Tag>}
+                                  {r?.opening_hours && <Tag icon={<ClockCircleOutlined />} color="green">{r.opening_hours}</Tag>}
+                                  {r?.business_area && <Tag color="green">{r.business_area}</Tag>}
                                 </Space>
-                                {getDesc(r) && <div style={{ color: '#666' }}>{getDesc(r)}</div>}
+                                {r?.address && <Text type="secondary">{r.address}</Text>}
+                                {Array.isArray(r?.specialties) && r.specialties.length > 0 && (
+                                  <Space wrap size={4}>
+                                    {r.specialties.slice(0, 5).map((s: string, idx: number) => (
+                                      <Tag key={idx} color="geekblue">{s}</Tag>
+                                    ))}
+                                  </Space>
+                                )}
+                                {desc && <div style={{ color: '#666' }}>{desc}</div>}
                               </Space>
                             </Card>
                           </List.Item>
@@ -636,33 +704,54 @@ const TravelPlanPage: React.FC = () => {
                       style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
                       renderItem={(item: any) => {
                         const cover = getImage(item);
+                        const title = getTitle(item);
+                        const desc = getDesc(item);
+                        const likes = getLikes(item);
+                        const tags = Array.isArray(item?.tag_list) ? item.tag_list.slice(0, 5) : [];
+                        const location = item?.location;
                         return (
                           <List.Item>
                             <Card
                               hoverable
                               cover={
                                 cover ? (
-                                  <Image src={cover} alt={getTitle(item)} height={160} style={{ objectFit: 'cover' }} />
+                                  <div style={{ position: 'relative', height: 160, overflow: 'hidden' }}>
+                                    <Image src={cover} alt={title} height={160} style={{ objectFit: 'cover', width: '100%' }} />
+                                    {typeof likes === 'number' && (
+                                      <Tag color="magenta" style={{ position: 'absolute', top: 8, right: 8 }}>
+                                        <HeartOutlined /> {likes}
+                                      </Tag>
+                                    )}
+                                  </div>
                                 ) : undefined
                               }
                             >
                               <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                                <Tooltip title={getTitle(item)}>
-                                  <div style={{ fontWeight: 600, lineHeight: 1.4 }}>
-                                    {getTitle(item)}
+                                <Tooltip title={title}>
+                                  <div style={{ fontWeight: 600, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {title}
                                   </div>
                                 </Tooltip>
-                                {getDesc(item) && (
-                                  <div style={{ color: '#666' }}>
-                                    {getDesc(item)}
+                                {tags.length > 0 && (
+                                  <Space wrap size={4}>
+                                    {tags.map((t: string) => (
+                                      <Tag key={t} color="geekblue">{t}</Tag>
+                                    ))}
+                                  </Space>
+                                )}
+                                {location && (
+                                  <Tag icon={<EnvironmentOutlined />} color="green">
+                                    {location}
+                                  </Tag>
+                                )}
+                                {desc && (
+                                  <div style={{ color: '#666', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {desc}
                                   </div>
                                 )}
                                 <Space size={8}>
-                                  {typeof getLikes(item) === 'number' && (
-                                    <Tag color="magenta">❤ {getLikes(item)}</Tag>
-                                  )}
                                   {item?.url && (
-                                    <Button size="small" type="link" href={item.url} target="_blank">
+                                    <Button size="small" type="link" href={item.url} target="_blank" icon={<LinkOutlined />}> 
                                       查看原文
                                     </Button>
                                   )}
