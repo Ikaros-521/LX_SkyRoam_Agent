@@ -25,8 +25,19 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   }
   const response = await fetch(input, { ...init, headers });
   if (response.status === 401) {
-    // 未授权，跳转登录
-    window.location.href = '/login';
+    // 防止在登录/注册页造成刷新循环；并清理过期令牌
+    const path = window.location.pathname || '';
+    const onAuthPage = path.startsWith('/login') || path.startsWith('/register');
+    if (!onAuthPage) {
+      try { clearToken(); } catch {}
+      const GUARD_KEY = 'auth_redirect_guard';
+      const now = Date.now();
+      const last = Number(sessionStorage.getItem(GUARD_KEY) || 0);
+      if (now - last > 2000) {
+        sessionStorage.setItem(GUARD_KEY, String(now));
+        window.location.href = '/login';
+      }
+    }
   }
   return response;
 }
