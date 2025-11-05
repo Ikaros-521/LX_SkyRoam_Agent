@@ -61,6 +61,12 @@ class PlaywrightXHSCrawler:
             
             # 创建页面
             self.page = await self.context.new_page()
+            # 优化默认超时时间，减少不必要等待
+            try:
+                self.page.set_default_timeout(5000)
+                self.page.set_default_navigation_timeout(10000)
+            except Exception:
+                pass
             
             # 尝试加载已保存的cookies
             cookies_loaded = await self._load_cookies()
@@ -142,13 +148,15 @@ class PlaywrightXHSCrawler:
             
             # 访问小红书登录页面
             await self.page.goto('https://www.xiaohongshu.com/explore')
-            await asyncio.sleep(2)
+            try:
+                await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
+            except Exception:
+                await self.page.wait_for_timeout(300)
             
             # 查找登录按钮
             try:
                 login_button = await self.page.wait_for_selector('text=登录', timeout=5000)
                 await login_button.click()
-                await asyncio.sleep(2)
             except:
                 logger.info("可能已经在登录页面或已登录")
             
@@ -166,7 +174,26 @@ class PlaywrightXHSCrawler:
                         login_container = await self.page.query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
                         if not login_container:
                             # 再次确认是否真的登录成功
-                            await asyncio.sleep(2)  # 等待页面完全加载
+                            selectors_to_confirm = [
+                                '.feeds-page',
+                                'section[class*="note"]',
+                                'div[class*="note"]',
+                                '.avatar, .user-avatar, [class*="avatar"]',
+                                'nav, header'
+                            ]
+                            element_found = False
+                            for selector in selectors_to_confirm:
+                                try:
+                                    await self.page.wait_for_selector(selector, timeout=5000)
+                                    element_found = True
+                                    break
+                                except Exception:
+                                    continue
+                            if not element_found:
+                                try:
+                                    await self.page.wait_for_load_state('networkidle', timeout=5000)
+                                except Exception:
+                                    await self.page.wait_for_timeout(500)
                             
                             # 再次检查登录容器是否存在
                             login_container = await self.page.query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
@@ -192,7 +219,10 @@ class PlaywrightXHSCrawler:
                     except Exception as e:
                         logger.debug(f"检查登录状态时出错: {e}")
                     
-                    await asyncio.sleep(2)
+                    try:
+                        await self.page.wait_for_load_state('networkidle', timeout=2000)
+                    except Exception:
+                        await self.page.wait_for_timeout(500)
                 
                 logger.warning("登录超时")
                 return False
@@ -209,7 +239,11 @@ class PlaywrightXHSCrawler:
         """检查登录状态"""
         try:
             # 不重复跳转页面，直接检查当前页面状态
-            await asyncio.sleep(1)
+
+            try:
+                await self.page.wait_for_load_state('domcontentloaded', timeout=3000)
+            except Exception:
+                await self.page.wait_for_timeout(300)
             
             # 首先检查是否存在登录容器（如果存在说明未登录）
             login_container = await self.page.query_selector('.login-container')
@@ -276,8 +310,11 @@ class PlaywrightXHSCrawler:
             # 构建搜索URL
             search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&type=note"
             await self.page.goto(search_url)
-            await asyncio.sleep(3)
-            
+
+            try:
+                await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
+            except Exception:
+                await self.page.wait_for_timeout(500)
             # 等待搜索结果加载 - 使用更通用的选择器
             try:
                 # 尝试多种可能的选择器
@@ -302,12 +339,18 @@ class PlaywrightXHSCrawler:
                 
                 if not element_found:
                     logger.warning("未找到标准的笔记元素，尝试通用方法")
-                    await asyncio.sleep(3)  # 等待页面完全加载
-                    
+
+                    try:
+                        await self.page.wait_for_load_state('networkidle', timeout=3000)
+                    except Exception:
+                        await self.page.wait_for_timeout(500)
+                
             except Exception as e:
                 logger.warning(f"等待页面元素失败: {e}")
-                await asyncio.sleep(3)
-            
+                try:
+                    await self.page.wait_for_load_state('networkidle', timeout=3000)
+                except Exception:
+                    await self.page.wait_for_timeout(500)
             notes = []
             scroll_count = 0
             max_scrolls = 5
@@ -325,8 +368,20 @@ class PlaywrightXHSCrawler:
                 
                 # 滚动加载更多
                 if len(notes) < max_notes:
+                    prev_count = 0
+                    try:
+                        prev_count = await self.page.evaluate('document.querySelectorAll("a[href*=\\\"/explore/\\\"]").length')
+                    except Exception:
+                        pass
                     await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-                    await asyncio.sleep(2)
+
+                    try:
+                        await self.page.wait_for_function(f'document.querySelectorAll("a[href*=\\\"/explore/\\\"]").length > {prev_count}', timeout=3000)
+                    except Exception:
+                        try:
+                            await self.page.wait_for_load_state('networkidle', timeout=2000)
+                        except Exception:
+                            await self.page.wait_for_timeout(500)
                     scroll_count += 1
             
             logger.info(f"成功获取 {len(notes)} 条真实笔记数据")
