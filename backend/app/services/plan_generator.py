@@ -650,65 +650,79 @@ class PlanGenerator:
         try:
             logger.info("开始模块化生成旅行方案")
             
-            # 串行调用各个模块化生成器，避免API限速
-            logger.info("开始串行生成各模块方案...")
-            
-            # 住宿方案
-            try:
-                accommodation_plans = await self._generate_accommodation_plans(
+            # 异步并发调用各模块生成器，子方案支持失败重试
+            logger.info("开始并发生成各模块方案，并启用重试机制...")
+
+            async def run_with_retry(coro_fn, *args, attempts: int = 3, delay: float = 1.0, module_name: str = "", **kwargs):
+                for i in range(attempts):
+                    try:
+                        result = await coro_fn(*args, **kwargs)
+                        return result
+                    except Exception as e:
+                        logger.error(f"{module_name} 生成失败，第 {i+1}/{attempts} 次: {e}")
+                        if i < attempts - 1:
+                            await asyncio.sleep(delay)
+                logger.error(f"{module_name} 重试耗尽，返回空列表")
+                return []
+
+            accommodation_task = asyncio.create_task(
+                run_with_retry(
+                    self._generate_accommodation_plans,
                     processed_data.get('hotels', []),
                     processed_data.get('flights', []),
                     plan,
                     preferences,
-                    raw_data
+                    raw_data,
+                    attempts=3,
+                    delay=1.0,
+                    module_name="住宿方案",
                 )
-            except Exception as e:
-                logger.error(f"住宿方案生成失败: {e}")
-                accommodation_plans = []
-            
-            # 添加延迟避免API限速
-            await asyncio.sleep(1)
-            
-            # 餐饮方案
-            try:
-                dining_plans = await self._generate_dining_plans(
+            )
+
+            dining_task = asyncio.create_task(
+                run_with_retry(
+                    self._generate_dining_plans,
                     processed_data.get('restaurants', []),
                     plan,
                     preferences,
-                    raw_data
+                    raw_data,
+                    attempts=3,
+                    delay=1.0,
+                    module_name="餐饮方案",
                 )
-            except Exception as e:
-                logger.error(f"餐饮方案生成失败: {e}")
-                dining_plans = []
-            
-            # 添加延迟避免API限速
-            await asyncio.sleep(1)
-            
-            # 交通方案
-            try:
-                transportation_plans = await self._generate_transportation_plans(
+            )
+
+            transportation_task = asyncio.create_task(
+                run_with_retry(
+                    self._generate_transportation_plans,
                     processed_data.get('transportation', []),
                     plan,
-                    preferences
+                    preferences,
+                    attempts=3,
+                    delay=1.0,
+                    module_name="交通方案",
                 )
-            except Exception as e:
-                logger.error(f"交通方案生成失败: {e}")
-                transportation_plans = []
-            
-            # 添加延迟避免API限速
-            await asyncio.sleep(1)
-            
-            # 景点方案
-            try:
-                attraction_plans = await self._generate_attraction_plans(
+            )
+
+            attraction_task = asyncio.create_task(
+                run_with_retry(
+                    self._generate_attraction_plans,
                     processed_data.get('attractions', []),
                     plan,
                     preferences,
-                    raw_data
+                    raw_data,
+                    attempts=3,
+                    delay=1.0,
+                    module_name="景点方案",
                 )
-            except Exception as e:
-                logger.error(f"景点方案生成失败: {e}")
-                attraction_plans = []
+            )
+
+            accommodation_plans, dining_plans, transportation_plans, attraction_plans = await asyncio.gather(
+                accommodation_task,
+                dining_task,
+                transportation_task,
+                attraction_task,
+            )
             
             # 检查是否有足够的数据进行组装
             failed_modules = []
