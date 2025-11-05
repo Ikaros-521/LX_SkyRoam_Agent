@@ -119,45 +119,79 @@ class AgentService:
         requirements: Optional[Dict[str, Any]] = None,
         interval_seconds: float = 1.0  # 每个任务启动之间的时间间隔
     ) -> Dict[str, Any]:
-        """数据收集阶段：在任务之间增加启动间隔"""
+        """数据收集阶段：按间隔启动任务，并在每个任务完成后增量保存预览
+        修复：使用任务包装返回(key, result, error)，避免as_completed返回对象与原Task不一致导致映射失败"""
         
         logger.info(f"开始收集 {plan.destination} 的各类数据（每个任务间隔 {interval_seconds}s 启动）")
 
-        # 延迟创建任务的方式（保证延迟生效）
-        coro_factories = [
-            lambda: self.data_collector.collect_flight_data(plan.departure, plan.destination, plan.start_date, plan.end_date),
-            lambda: self.data_collector.collect_hotel_data(plan.destination, plan.start_date, plan.end_date),
-            lambda: self.data_collector.collect_attraction_data(plan.destination),
-            lambda: self.data_collector.collect_weather_data(plan.destination, plan.start_date, plan.end_date),
-            lambda: self.data_collector.collect_restaurant_data(plan.destination),
-            lambda: self.data_collector.collect_transportation_data(plan.departure, plan.destination, plan.transportation),
-            lambda: self.data_collector.collect_xiaohongshu_data(plan.destination),
+        # 将任务与对应的section键关联，便于增量更新
+        task_specs = [
+            ("flights", lambda: self.data_collector.collect_flight_data(plan.departure, plan.destination, plan.start_date, plan.end_date)),
+            ("hotels", lambda: self.data_collector.collect_hotel_data(plan.destination, plan.start_date, plan.end_date)),
+            ("attractions", lambda: self.data_collector.collect_attraction_data(plan.destination)),
+            ("weather", lambda: self.data_collector.collect_weather_data(plan.destination, plan.start_date, plan.end_date)),
+            ("restaurants", lambda: self.data_collector.collect_restaurant_data(plan.destination)),
+            ("transportation", lambda: self.data_collector.collect_transportation_data(plan.departure, plan.destination, plan.transportation)),
+            ("xiaohongshu_notes", lambda: self.data_collector.collect_xiaohongshu_data(plan.destination)),
         ]
 
-        tasks = []
-        for i, factory in enumerate(coro_factories):
+        # 任务包装：返回(key, result, error)
+        async def run_with_key(key: str, factory):
+            try:
+                res = await factory()
+                return key, res, None
+            except Exception as e:
+                return key, None, e
+
+        tasks: List[asyncio.Task] = []
+
+        # 延迟创建 + 调度任务（保证间隔生效）
+        for i, (key, factory) in enumerate(task_specs):
             if i > 0 and interval_seconds > 0:
-                logger.debug(f"等待 {interval_seconds}s 后启动下一个任务 ({i+1}/{len(coro_factories)})")
+                logger.info(f"等待 {interval_seconds}s 后启动下一个任务 ({i+1}/{len(task_specs)})")
                 await asyncio.sleep(interval_seconds)
-            # 延迟创建 + 调度任务
-            task = asyncio.create_task(factory())
+            task = asyncio.create_task(run_with_key(key, factory))
             tasks.append(task)
-            logger.debug(f"已启动任务 {i+1}/{len(coro_factories)}")
+            logger.info(f"已启动任务 {i+1}/{len(task_specs)}: {key}")
 
-        # 并行等待所有任务完成
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 用于聚合增量结果
+        partial_raw: Dict[str, Any] = {}
 
-        # 构造结果字典
+        # 逐个等待任务完成，并在每次完成后保存一次预览
+        for task in asyncio.as_completed(tasks):
+            key, result, error = await task
+            if error:
+                logger.warning(f"{key} 数据收集失败: {error}")
+                # 根据类型填充合理的默认值
+                if key == "weather":
+                    result = {}
+                else:
+                    result = []
+
+            # 更新聚合结果
+            if key == "weather":
+                partial_raw[key] = result if isinstance(result, dict) else {}
+            else:
+                partial_raw[key] = result if isinstance(result, list) else []
+
+            # 增量保存原始数据预览（覆盖之前的预览，前端轮询可见逐步更新）
+            try:
+                await self._save_raw_preview(plan.id, partial_raw, plan)
+                logger.info(f"已增量保存预览，section: {key}，当前可用: {list(partial_raw.keys())}")
+            except Exception as save_err:
+                logger.warning(f"保存预览失败（{key}）: {save_err}")
+
+        # 返回最终完整结果（保证键齐全）
         return {
-            "flights": results[0] if not isinstance(results[0], Exception) else [],
-            "hotels": results[1] if not isinstance(results[1], Exception) else [],
-            "attractions": results[2] if not isinstance(results[2], Exception) else [],
-            "weather": results[3] if not isinstance(results[3], Exception) else {},
-            "restaurants": results[4] if not isinstance(results[4], Exception) else [],
-            "transportation": results[5] if not isinstance(results[5], Exception) else [],
-            "xiaohongshu_notes": results[6] if not isinstance(results[6], Exception) else []
+            "flights": partial_raw.get("flights", []),
+            "hotels": partial_raw.get("hotels", []),
+            "attractions": partial_raw.get("attractions", []),
+            "weather": partial_raw.get("weather", {}),
+            "restaurants": partial_raw.get("restaurants", []),
+            "transportation": partial_raw.get("transportation", []),
+            "xiaohongshu_notes": partial_raw.get("xiaohongshu_notes", [])
         }
-    
+
     async def _process_data(
         self, 
         raw_data: Dict[str, Any], 
