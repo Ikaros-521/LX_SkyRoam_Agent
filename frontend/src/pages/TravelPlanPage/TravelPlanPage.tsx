@@ -15,7 +15,13 @@ import {
   Spin,
   Progress,
   InputNumber,
-  Checkbox
+  Checkbox,
+  Empty,
+  Tooltip,
+  Tag,
+  Tabs,
+  List,
+  Image
 } from 'antd';
 import { 
   SearchOutlined, 
@@ -31,6 +37,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
 import { authFetch } from '../../utils/auth';
+
 
 const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -63,6 +70,38 @@ const TravelPlanPage: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const hasAutoSubmitted = useRef(false);
+  // 新增：预览数据
+  const [previewData, setPreviewData] = useState<any | null>(null);
+
+  // 预览渲染工具函数（在组件内，便于使用）
+  const getTitle = (item: any, fallback: string = '未命名') => (
+    item?.title || item?.name || item?.note_title || item?.poiName || item?.restaurant_name || fallback
+  );
+
+  const getDesc = (item: any) => (
+    item?.desc || item?.description || item?.note_desc || item?.summary || item?.address || ''
+  );
+
+  const getImage = (item: any) => {
+    const candidates = [
+      item?.cover_url,
+      item?.image_url,
+      item?.thumbnail,
+      Array.isArray(item?.images) ? item.images[0] : undefined,
+      Array.isArray(item?.photos) ? item.photos[0] : undefined,
+    ];
+    return candidates.find((u) => typeof u === 'string' && u.length > 0);
+  };
+
+  const getPrice = (item: any) => {
+    const p = item?.price || item?.price_total || item?.min_price || item?.avg_price || item?.price_per_night;
+    return typeof p === 'number' ? `¥${p}` : typeof p === 'string' ? p : undefined;
+  };
+
+  const getLikes = (item: any) => {
+    const v = item?.likes || item?.like_count || item?.liked_count;
+    return typeof v === 'number' ? v : undefined;
+  };
 
   // 接收来自首页的表单数据并自动提交
   useEffect(() => {
@@ -177,6 +216,7 @@ const TravelPlanPage: React.FC = () => {
     console.log('开始生成方案:', { planId, preferences });
     setCurrentStep(2);
     setGenerationStatus('generating');
+    setPreviewData(null); // 重置预览
     
     try {
       // 启动方案生成
@@ -221,6 +261,14 @@ const TravelPlanPage: React.FC = () => {
         const response = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_STATUS(planId)));
         const status = await response.json();
         
+        // 如果处于生成中，尝试读取预览
+        if (status.status === 'generating') {
+          const preview = Array.isArray(status.generated_plans)
+            ? status.generated_plans.find((p: any) => p?.is_preview && p?.preview_type === 'raw_data_preview')
+            : null;
+          setPreviewData(preview || null);
+        }
+        
         // 动态更新进度，基于轮询次数
         const newProgress = Math.min(10 + (pollCount * 0.6), 90);
         setProgress(newProgress);
@@ -232,6 +280,7 @@ const TravelPlanPage: React.FC = () => {
           setCurrentStep(3);
           setGenerationStatus('completed');
           setProgress(100);
+          setPreviewData(null); // 完成后清空预览
           console.log('方案生成完成！');
           
           // 跳转到方案详情页
@@ -353,6 +402,283 @@ const TravelPlanPage: React.FC = () => {
               正在收集数据并生成方案...
             </Text>
           </div>
+        </Card>
+      )}
+
+      {/* 预览数据展示 */}
+      {generationStatus === 'generating' && previewData && (
+        <Card title={previewData.title || '数据预览'} style={{ marginBottom: '24px' }}>
+          <Tabs
+            defaultActiveKey="xhs"
+            items={[
+              {
+                key: 'xhs',
+                label: '小红书',
+                children: (
+                  (previewData.sections?.xiaohongshu_notes || []).length ? (
+                    <List
+                      grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4 }}
+                      dataSource={previewData.sections?.xiaohongshu_notes}
+                      style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
+                      renderItem={(item: any) => {
+                        const cover = getImage(item);
+                        return (
+                          <List.Item>
+                            <Card
+                              hoverable
+                              cover={
+                                cover ? (
+                                  <Image src={cover} alt={getTitle(item)} height={160} style={{ objectFit: 'cover' }} />
+                                ) : undefined
+                              }
+                            >
+                              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                                <Tooltip title={getTitle(item)}>
+                                  <div style={{ fontWeight: 600, lineHeight: 1.4 }}>
+                                    {getTitle(item)}
+                                  </div>
+                                </Tooltip>
+                                {getDesc(item) && (
+                                  <div style={{ color: '#666' }}>
+                                    {getDesc(item)}
+                                  </div>
+                                )}
+                                <Space size={8}>
+                                  {typeof getLikes(item) === 'number' && (
+                                    <Tag color="magenta">❤ {getLikes(item)}</Tag>
+                                  )}
+                                  {item?.url && (
+                                    <Button size="small" type="link" href={item.url} target="_blank">
+                                      查看原文
+                                    </Button>
+                                  )}
+                                </Space>
+                              </Space>
+                            </Card>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  ) : (
+                    <Empty description="暂无数据" />
+                  )
+                ),
+              },
+              {
+                key: 'flights',
+                label: '航班',
+                children: (
+                  (previewData.sections?.flights || []).length ? (
+                    <List
+                      itemLayout="vertical"
+                      dataSource={previewData.sections?.flights}
+                      style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
+                      renderItem={(f: any) => (
+                        <List.Item>
+                          <Card hoverable>
+                            <Space wrap size={12}>
+                              <div style={{ fontWeight: 600 }}>{getTitle(f, '航班')}</div>
+                              {f?.airline && <Tag color="blue">{f.airline}</Tag>}
+                              {f?.flight_no && <Tag>{f.flight_no}</Tag>}
+                              {f?.departure_time && <Tag color="green">出发 {f.departure_time}</Tag>}
+                              {f?.arrival_time && <Tag color="green">到达 {f.arrival_time}</Tag>}
+                              {getPrice(f) && <Tag color="orange">{getPrice(f)}</Tag>}
+                            </Space>
+                            {getDesc(f) && (
+                              <div style={{ marginTop: 8, color: '#666' }}>{getDesc(f)}</div>
+                            )}
+                          </Card>
+                        </List.Item>
+                      )}
+                    />
+                  ) : (
+                    <Empty description="暂无数据" />
+                  )
+                ),
+              },
+              {
+                key: 'hotels',
+                label: '酒店',
+                children: (
+                  (previewData.sections?.hotels || []).length ? (
+                    <List
+                      grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4 }}
+                      dataSource={previewData.sections?.hotels}
+                      style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
+                      renderItem={(h: any) => {
+                        const cover = getImage(h);
+                        return (
+                          <List.Item>
+                            <Card
+                              hoverable
+                              cover={
+                                cover ? (
+                                  <Image src={cover} alt={getTitle(h)} height={160} style={{ objectFit: 'cover' }} />
+                                ) : undefined
+                              }
+                            >
+                              <Space direction="vertical" size={8}>
+                                <div style={{ fontWeight: 600 }}>{getTitle(h, '酒店')}</div>
+                                <Space size={8}>
+                                  {h?.rating && <Tag color="gold">评分 {h.rating}</Tag>}
+                                  {getPrice(h) && <Tag color="orange">{getPrice(h)}</Tag>}
+                                </Space>
+                                {getDesc(h) && <div style={{ color: '#666' }}>{getDesc(h)}</div>}
+                              </Space>
+                            </Card>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  ) : (
+                    <Empty description="暂无数据" />
+                  )
+                ),
+              },
+              {
+                key: 'attractions',
+                label: '景点',
+                children: (
+                  (previewData.sections?.attractions || []).length ? (
+                    <List
+                      grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4 }}
+                      dataSource={previewData.sections?.attractions}
+                      style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
+                      renderItem={(a: any) => {
+                        const cover = getImage(a);
+                        return (
+                          <List.Item>
+                            <Card
+                              hoverable
+                              cover={
+                                cover ? (
+                                  <Image src={cover} alt={getTitle(a)} height={160} style={{ objectFit: 'cover' }} />
+                                ) : undefined
+                              }
+                            >
+                              <Space direction="vertical" size={8}>
+                                <div style={{ fontWeight: 600 }}>{getTitle(a, '景点')}</div>
+                                {getDesc(a) && <div style={{ color: '#666' }}>{getDesc(a)}</div>}
+                              </Space>
+                            </Card>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  ) : (
+                    <Empty description="暂无数据" />
+                  )
+                ),
+              },
+              {
+                key: 'restaurants',
+                label: '餐厅',
+                children: (
+                  (previewData.sections?.restaurants || []).length ? (
+                    <List
+                      grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4 }}
+                      dataSource={previewData.sections?.restaurants}
+                      style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
+                      renderItem={(r: any) => {
+                        const cover = getImage(r);
+                        return (
+                          <List.Item>
+                            <Card
+                              hoverable
+                              cover={
+                                cover ? (
+                                  <Image src={cover} alt={getTitle(r)} height={160} style={{ objectFit: 'cover' }} />
+                                ) : undefined
+                              }
+                            >
+                              <Space direction="vertical" size={8}>
+                                <div style={{ fontWeight: 600 }}>{getTitle(r, '餐厅')}</div>
+                                <Space size={8}>
+                                  {r?.rating && <Tag color="gold">评分 {r.rating}</Tag>}
+                                  {getPrice(r) && <Tag color="orange">{getPrice(r)}</Tag>}
+                                </Space>
+                                {getDesc(r) && <div style={{ color: '#666' }}>{getDesc(r)}</div>}
+                              </Space>
+                            </Card>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  ) : (
+                    <Empty description="暂无数据" />
+                  )
+                ),
+              },
+              {
+                key: 'weather',
+                label: '天气',
+                children: (
+                  (() => {
+                    const weatherRaw = previewData.sections?.weather;
+                    const isArray = Array.isArray(weatherRaw);
+                    const weatherObj = isArray ? { location: '', forecast: weatherRaw, recommendations: [] } : weatherRaw;
+                    const location = weatherObj?.location;
+                    const forecast = Array.isArray(weatherObj?.forecast) ? weatherObj?.forecast : (isArray ? weatherRaw : []);
+                    const recommendations = Array.isArray(weatherObj?.recommendations) ? weatherObj?.recommendations : [];
+                    const emojiFor = (w?: string) => {
+                      const s = (w || '').toLowerCase();
+                      if (!s) return '🌤️';
+                      if (s.includes('晴')) return '☀️';
+                      if (s.includes('云')) return '☁️';
+                      if (s.includes('雨')) return '🌧️';
+                      if (s.includes('雪')) return '❄️';
+                      if (s.includes('雷')) return '⛈️';
+                      if (s.includes('阴')) return '☁️';
+                      return '🌤️';
+                    };
+                    return forecast && forecast.length ? (
+                      <Card>
+                        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                          {location && <Text type="secondary">地区：{location}</Text>}
+                          <List
+                            grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4 }}
+                            dataSource={forecast}
+                            style={{ maxHeight: 420, overflow: 'auto', paddingRight: 8 }}
+                            renderItem={(d: any) => (
+                              <List.Item>
+                                <Card hoverable>
+                                  <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                    <div style={{ fontWeight: 600 }}>{d?.date || ''}（周{d?.week || ''}）</div>
+                                    <Space size={8}>
+                                      <Tag>{emojiFor(d?.dayweather)} 日间 {d?.dayweather}</Tag>
+                                      <Tag>{emojiFor(d?.nightweather)} 夜间 {d?.nightweather}</Tag>
+                                    </Space>
+                                    <Space size={8}>
+                                      {d?.daytemp && <Tag color="blue">最高 {d.daytemp}℃</Tag>}
+                                      {d?.nighttemp && <Tag color="cyan">最低 {d.nighttemp}℃</Tag>}
+                                    </Space>
+                                    <Space size={8}>
+                                      {(d?.daywind || d?.nightwind) && <Tag color="green">风向 {d?.daywind || d?.nightwind}</Tag>}
+                                      {(d?.daypower || d?.nightpower) && <Tag>风力 {d?.daypower || d?.nightpower}</Tag>}
+                                    </Space>
+                                  </Space>
+                                </Card>
+                              </List.Item>
+                            )}
+                          />
+                          {recommendations.length ? (
+                            <Alert
+                              type="info"
+                              showIcon
+                              message="出行建议"
+                              description={recommendations.join('、')}
+                            />
+                          ) : null}
+                        </Space>
+                      </Card>
+                    ) : (
+                      <Empty description="暂无天气数据" />
+                    );
+                  })()
+                ),
+              },
+            ]}
+          />
         </Card>
       )}
 

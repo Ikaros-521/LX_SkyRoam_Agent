@@ -64,9 +64,8 @@ class AgentService:
             # 3. 数据收集阶段
             logger.info("开始数据收集...")
             raw_data = await self._collect_data(plan, preferences, requirements)
-
-            # logger.warning(f"数据收集结果: {json.dumps(raw_data, ensure_ascii=False)}")
-            
+            logger.info("保存原始数据预览并提前展示...")
+            await self._save_raw_preview(plan_id, raw_data, plan)
             # 4. 数据清洗和评分
             logger.info("开始数据清洗和评分...")
             processed_data = await self._process_data(raw_data, plan)
@@ -324,3 +323,63 @@ class AgentService:
         except Exception as e:
             logger.error(f"获取推荐失败: {e}")
             return []
+
+    async def _save_preview_plan(self, plan_id: int, preview_plan: Dict[str, Any]):
+        """保存快速预览方案到 generated_plans 以便前端提前展示"""
+        from sqlalchemy import update
+        from app.models.travel_plan import TravelPlan
+        # 将预览方案放入列表，并做序列化处理
+        serialized_preview = self._serialize_for_json([preview_plan])
+        await self.db.execute(
+            update(TravelPlan)
+            .where(TravelPlan.id == plan_id)
+            .values(generated_plans=serialized_preview)
+        )
+        await self.db.commit()
+
+    async def _save_raw_preview(self, plan_id: int, raw_data: Dict[str, Any], plan: TravelPlan):
+        """将数据收集阶段的原始数据保存为预览，供前端提前展示"""
+        from sqlalchemy import update
+        from app.models.travel_plan import TravelPlan
+        # 选择展示数量
+        MAX_XHS = 8
+        MAX_FLIGHTS = 3
+        MAX_HOTELS = 3
+        MAX_ATTRACTIONS = 6
+        MAX_RESTAURANTS = 6
+    
+        def top_n(items, n, key=None, reverse=True):
+            try:
+                if not isinstance(items, list):
+                    return []
+                if key:
+                    items = sorted(items, key=lambda x: x.get(key, 0), reverse=reverse)
+                return items[:n]
+            except Exception:
+                return items[:n] if isinstance(items, list) else []
+    
+        sections = {
+            "xiaohongshu_notes": top_n(raw_data.get("xiaohongshu_notes", []), MAX_XHS, key="likes"),
+            "flights": top_n(raw_data.get("flights", []), MAX_FLIGHTS, key="price", reverse=False),
+            "hotels": top_n(raw_data.get("hotels", []), MAX_HOTELS, key="rating"),
+            "attractions": top_n(raw_data.get("attractions", []), MAX_ATTRACTIONS, key="rating"),
+            "restaurants": top_n(raw_data.get("restaurants", []), MAX_RESTAURANTS, key="rating"),
+            "weather": raw_data.get("weather", {}),
+        }
+    
+        preview = {
+            "id": "preview_raw_1",
+            "is_preview": True,
+            "preview_type": "raw_data_preview",
+            "title": f"{getattr(plan, 'destination', '')} 数据预览",
+            "sections": sections,
+            "generated_at": datetime.utcnow().isoformat(),
+        }
+    
+        serialized_preview = self._serialize_for_json([preview])
+        await self.db.execute(
+            update(TravelPlan)
+            .where(TravelPlan.id == plan_id)
+            .values(generated_plans=serialized_preview)
+        )
+        await self.db.commit()
