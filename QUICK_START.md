@@ -81,10 +81,14 @@ start.bat
 ```
 
 ### 4. 访问应用
-- **前端应用**: http://localhost:3000
-- **后端API**: http://localhost:8001
-- **API文档**: http://localhost:8001/docs
-- **Celery监控**: http://localhost:5555
+- 前端应用: http://localhost:13000
+- 后端 API: 默认不对外暴露；由前端容器通过 `http://backend:8001` 访问。若需宿主机直接访问，请在 `docker-compose.yml` 的 `backend` 服务添加端口映射：`ports: - "18001:8001"`，然后使用 `http://localhost:18001`。
+- API 文档: 默认仅容器内可访问 `http://backend:8001/docs`；如上端口映射后，可在宿主机访问 `http://localhost:18001/docs`。
+- Celery 监控 (Flower): 默认仅容器内 `http://skyroam-flower:5555`；若需宿主机访问，请在 `flower` 服务添加端口映射：`ports: - "15555:5555"`，然后使用 `http://localhost:15555`。
+- 高德 MCP HTTP 服务: http://localhost:13002
+- 小红书 API 服务: http://localhost:18002
+- PostgreSQL: 内网容器 `postgres:5432`，未对外暴露
+- Redis: 内网容器 `redis:6379`，未对外暴露
 
 ## 🔧 手动启动 (开发模式)
 
@@ -234,19 +238,21 @@ MAP_API_KEY=your-google-maps-api-key
 
 ## 📊 服务监控
 
-### 健康检查
-```bash
-# 检查所有服务状态
-curl http://localhost:8001/health
-
-# 检查API文档
-curl http://localhost:8001/docs
-
-# 检查OpenAI配置
-curl http://localhost:8001/api/v1/openai/config
-
-# 测试OpenAI连接
-curl -X POST http://localhost:8001/api/v1/openai/test
+### 健康检查（Docker 部署）
+- 默认后端未映射到宿主机端口，需在容器内执行或先映射端口。
+- 在容器内执行示例：
+```
+docker exec skyroam-backend bash -lc "curl -s http://localhost:8001/health"
+docker exec skyroam-backend bash -lc "curl -s http://localhost:8001/docs"
+docker exec skyroam-backend bash -lc "curl -s http://localhost:8001/api/v1/openai/config"
+docker exec skyroam-backend bash -lc "curl -s -X POST http://localhost:8001/api/v1/openai/test"
+```
+- 若已为后端添加端口映射（如 `18001:8001`），则宿主机可直接：
+```
+curl http://localhost:18001/health
+curl http://localhost:18001/docs
+curl http://localhost:18001/api/v1/openai/config
+curl -X POST http://localhost:18001/api/v1/openai/test
 ```
 
 ### 日志查看
@@ -349,3 +355,16 @@ npm run format
 ---
 
 **祝您使用愉快！** 🎉
+
+## 🐳 Docker 部署端口与访问
+- `frontend`: 13000 -> 3000，宿主机访问 `http://localhost:13000`
+- `backend`: 默认不对外暴露（容器内 `http://backend:8001`）；如需宿主机访问，添加 `ports: - "18001:8001"`
+- `amap-mcp-api`: 13002 -> 3002，宿主机访问 `http://localhost:13002`
+- `xhs-api`: 18002 -> 8002，宿主机访问 `http://localhost:18002`
+- `flower`: 默认不对外暴露（容器内 `http://skyroam-flower:5555`）；如需宿主机访问，添加 `ports: - "15555:5555"`
+- `postgres`: 仅内网，容器内 `postgres:5432`
+- `redis`: 仅内网，容器内 `redis:6379`
+
+### 说明
+- 前端通过服务名 `backend` 访问后端，无需后端对外暴露即可正常工作。
+- 需要在宿主机直接调用后端 API 或 Flower 时，再按需开启对应端口映射。

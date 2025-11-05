@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 FROM node:18-alpine
 
 # 设置工作目录
@@ -6,8 +7,13 @@ WORKDIR /app
 # 复制package.json和package-lock.json
 COPY package*.json ./
 
-# 安装依赖（开发镜像保留 devDependencies 方便热更新）
-RUN npm ci
+# 安装 cnpm 并配置镜像
+RUN npm i -g cnpm --registry=https://registry.npmmirror.com && \
+    cnpm config set registry https://registry.npmmirror.com
+
+# 使用 cnpm 安装依赖（缓存加速）
+RUN --mount=type=cache,target=/root/.npminstall_tarball --mount=type=cache,target=/root/.npm \
+    cnpm install
 
 # 复制源代码
 COPY . .
