@@ -237,13 +237,14 @@ const DestinationsPage: React.FC = () => {
               <Col xs={24} sm={12} md={8} lg={6} key={d.id}>
                 <Card
                   hoverable
+                  style={{ borderRadius: 12, overflow: 'hidden' }}
                   onClick={() => openPlansModal(d)}
                   cover={(
                     <Image src={resolveLocalImage(d)}
                       fallback={getFallbackImage(d)}
                       alt={d.name}
                       height={160}
-                      style={{ objectFit: 'cover' }}
+                      style={{ objectFit: 'cover', borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
                       onError={(e) => {
                         const img = e.currentTarget as HTMLImageElement;
                         const fb = getFallbackImage(d);
@@ -359,7 +360,6 @@ const DestinationsPage: React.FC = () => {
 };
 
 export default DestinationsPage;
-
 const toSlug = (name: string) =>
   name.trim().replace(/\s+/g, '-');
 const resolveLocalImage = (d: Destination) =>
