@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Row, Col, Typography, Input, Space, Tag, Image, Modal, List, Button, Spin, Empty, Carousel } from 'antd';
+import { Card, Row, Col, Typography, Input, Space, Tag, Image, Modal, List, Button, Spin, Empty, Carousel, Select, DatePicker } from 'antd';
 import { GlobalOutlined, SearchOutlined, EnvironmentOutlined, CalendarOutlined, DollarOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -69,6 +69,9 @@ const DestinationsPage: React.FC = () => {
   const [plansLoading, setPlansLoading] = useState<boolean>(false);
   const [plans, setPlans] = useState<TravelPlan[]>([]);
   const [planQ, setPlanQ] = useState<string>('');
+  const [planMinScore, setPlanMinScore] = useState<number | undefined>(undefined);
+  const [planDateRange, setPlanDateRange] = useState<any[]>([]);
+  const [planStatus, setPlanStatus] = useState<string>('全部');
 
   useEffect(() => {
     const fetchDestinations = async () => {
@@ -122,6 +125,9 @@ const DestinationsPage: React.FC = () => {
     setModalOpen(true);
     setPlansLoading(true);
     setPlanQ('');
+    setPlanMinScore(undefined);
+    setPlanDateRange([]);
+    setPlanStatus('全部');
     try {
       // 取当前用户的计划列表，然后在前端按目的地过滤
       const res = await authFetch(buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLANS}?skip=0&limit=100`));
@@ -140,12 +146,35 @@ const DestinationsPage: React.FC = () => {
 
   const filteredPlans = useMemo(() => {
     const keyword = planQ.trim().toLowerCase();
-    if (!keyword) return plans;
-    return plans.filter((p) => {
-      const hay = [p.title, p.description, p.status].filter(Boolean).join(' ').toLowerCase();
-      return hay.includes(keyword);
-    });
-  }, [plans, planQ]);
+    let result = plans;
+
+    if (keyword) {
+      result = result.filter((p) => {
+        const hay = [p.title, p.description, p.status].filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(keyword);
+      });
+    }
+
+    if (typeof planMinScore === 'number') {
+      result = result.filter((p) => typeof p.score === 'number' && (p.score as number) >= planMinScore);
+    }
+
+    if (planStatus && planStatus !== '全部') {
+      result = result.filter((p) => p.status === planStatus);
+    }
+
+    if (Array.isArray(planDateRange) && planDateRange.length === 2 && planDateRange[0] && planDateRange[1]) {
+      const [r0, r1] = planDateRange;
+      result = result.filter((p) => {
+        const ds = dayjs(p.start_date);
+        const de = dayjs(p.end_date);
+        if (!ds.isValid() || !de.isValid()) return false;
+        return !ds.isAfter(r1, 'day') && !de.isBefore(r0, 'day');
+      });
+    }
+
+    return result;
+  }, [plans, planQ, planMinScore, planStatus, planDateRange]);
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -284,13 +313,51 @@ const DestinationsPage: React.FC = () => {
         width={900}
       >
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
-          <Input
-            allowClear
-            value={planQ}
-            onChange={(e) => setPlanQ(e.target.value)}
-            placeholder="在此进行二级检索（方案标题、状态等）"
-            prefix={<SearchOutlined />}
-          />
+          <Space wrap size="middle">
+            <Input.Search
+              placeholder="关键词（标题/描述/状态）"
+              allowClear
+              style={{ width: 280 }}
+              value={planQ}
+              onChange={(e) => setPlanQ(e.target.value)}
+              onSearch={(v) => setPlanQ(v.trim())}
+            />
+            <Select
+              placeholder="评分"
+              allowClear
+              style={{ width: 160 }}
+              value={planMinScore}
+              onChange={(v) => setPlanMinScore(v as number | undefined)}
+              options={[
+                { value: 1, label: '1星及以上' },
+                { value: 2, label: '2星及以上' },
+                { value: 3, label: '3星及以上' },
+                { value: 4, label: '4星及以上' },
+                { value: 5, label: '5星' },
+              ]}
+            />
+            <DatePicker.RangePicker
+              value={planDateRange as any}
+              onChange={(range) => setPlanDateRange(range || [])}
+            />
+            <Select
+              placeholder="状态"
+              allowClear
+              style={{ width: 160 }}
+              value={planStatus === '全部' ? undefined : planStatus}
+              onChange={(v) => setPlanStatus((v as string) || '全部')}
+              options={[
+                { value: 'draft', label: '草稿' },
+                { value: 'generating', label: '生成中' },
+                { value: 'completed', label: '已完成' },
+                { value: 'failed', label: '失败' },
+                { value: 'archived', label: '已归档' },
+              ]}
+            />
+            <Button onClick={() => { setPlanQ(''); setPlanMinScore(undefined); setPlanDateRange([]); setPlanStatus('全部'); }}>
+              重置
+            </Button>
+          </Space>
 
           {plansLoading ? (
             <div style={{ textAlign: 'center', padding: 40 }}>
