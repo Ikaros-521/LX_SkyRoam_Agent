@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.orm import selectinload
 
-from app.models.travel_plan import TravelPlan, TravelPlanItem
+from app.models.travel_plan import TravelPlan, TravelPlanItem, TravelPlanRating
 from app.schemas.travel_plan import TravelPlanCreate, TravelPlanUpdate, TravelPlanResponse
 
 
@@ -146,3 +146,64 @@ class TravelPlanService:
         )
         await self.db.commit()
         return result.rowcount or 0
+
+    # =============== 评分相关方法 ===============
+    async def upsert_rating(self, plan_id: int, user_id: int, score: int, comment: Optional[str]) -> Tuple[float, int]:
+        """新增或更新用户对某方案的评分，并返回最新汇总(平均分, 数量)"""
+        # 先查是否已有评分
+        existing_q = select(TravelPlanRating).where(
+            TravelPlanRating.travel_plan_id == plan_id,
+            TravelPlanRating.user_id == user_id
+        )
+        existing_res = await self.db.execute(existing_q)
+        rating = existing_res.scalar_one_or_none()
+        if rating:
+            rating.score = score
+            rating.comment = comment
+        else:
+            rating = TravelPlanRating(
+                travel_plan_id=plan_id,
+                user_id=user_id,
+                score=score,
+                comment=comment
+            )
+            self.db.add(rating)
+        await self.db.commit()
+
+        # 计算汇总
+        summary_q = select(func.avg(TravelPlanRating.score), func.count(TravelPlanRating.id)).where(
+            TravelPlanRating.travel_plan_id == plan_id
+        )
+        summary_res = await self.db.execute(summary_q)
+        avg, cnt = summary_res.first()
+        return float(avg or 0), int(cnt or 0)
+
+    async def get_ratings(self, plan_id: int, skip: int = 0, limit: int = 10) -> List[TravelPlanRating]:
+        """获取某方案的评分列表"""
+        q = (
+            select(TravelPlanRating)
+            .where(TravelPlanRating.travel_plan_id == plan_id)
+            .order_by(TravelPlanRating.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        res = await self.db.execute(q)
+        return res.scalars().all()
+
+    async def get_rating_summary(self, plan_id: int) -> Tuple[float, int]:
+        """获取评分汇总(平均分, 数量)"""
+        summary_q = select(func.avg(TravelPlanRating.score), func.count(TravelPlanRating.id)).where(
+            TravelPlanRating.travel_plan_id == plan_id
+        )
+        summary_res = await self.db.execute(summary_q)
+        avg, cnt = summary_res.first()
+        return float(avg or 0), int(cnt or 0)
+
+    async def get_rating_by_user(self, plan_id: int, user_id: int) -> Optional[TravelPlanRating]:
+        """获取当前用户对该方案的评分记录"""
+        q = select(TravelPlanRating).where(
+            TravelPlanRating.travel_plan_id == plan_id,
+            TravelPlanRating.user_id == user_id
+        )
+        res = await self.db.execute(q)
+        return res.scalar_one_or_none()

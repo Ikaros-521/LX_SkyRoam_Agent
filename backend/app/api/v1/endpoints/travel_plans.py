@@ -252,6 +252,73 @@ async def export_travel_plan_post(
     """导出旅行计划（POST，同步返回，与GET一致）"""
     return await export_travel_plan(plan_id=plan_id, format=format, db=db, current_user=current_user)
 
+# =============== 评分相关端点 ===============
+from app.schemas.travel_plan import (
+    TravelPlanRatingCreate,
+    TravelPlanRatingResponse,
+    TravelPlanRatingSummary,
+)
+
+@router.post("/{plan_id}/ratings")
+async def rate_travel_plan(
+    plan_id: int,
+    payload: TravelPlanRatingCreate,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """对旅行计划进行评分（任何登录用户可评分）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    # 允许任意登录用户评分，无需拥有权限
+    avg, cnt = await service.upsert_rating(plan_id, current_user.id, payload.score, payload.comment)
+    return {"message": "评分已提交", "summary": {"average": avg, "count": cnt}}
+
+@router.get("/{plan_id}/ratings", response_model=List[TravelPlanRatingResponse])
+async def list_plan_ratings(
+    plan_id: int,
+    skip: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取旅行计划的评分列表（登录用户可查看）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    ratings = await service.get_ratings(plan_id, skip=skip, limit=limit)
+    return ratings
+
+@router.get("/{plan_id}/ratings/summary", response_model=TravelPlanRatingSummary)
+async def get_plan_rating_summary(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取评分汇总（平均分、数量）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    avg, cnt = await service.get_rating_summary(plan_id)
+    return {"average": avg, "count": cnt}
+
+@router.get("/{plan_id}/ratings/me", response_model=Optional[TravelPlanRatingResponse])
+async def get_my_plan_rating(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取当前用户对该计划的评分（用于前端回填）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    rating = await service.get_rating_by_user(plan_id, current_user.id)
+    return rating
+
 def _render_plan_html(plan_data: dict) -> str:
     title = plan_data.get("title") or f"旅行方案 #{plan_data.get('id', '')}"
     destination = plan_data.get("destination", "")

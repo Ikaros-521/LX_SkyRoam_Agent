@@ -99,10 +99,30 @@ const PlanDetailPage: React.FC = () => {
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [showAllHotels, setShowAllHotels] = useState(false);
+  // 新增：评分相关状态
+  const [ratingSummary, setRatingSummary] = useState<{ average: number; count: number } | null>(null);
+  const [myRating, setMyRating] = useState<{ score: number | null; comment: string }>({ score: null, comment: '' });
+  const [recentRatings, setRecentRatings] = useState<any[]>([]);
+  const [submittingRating, setSubmittingRating] = useState(false);
 
   useEffect(() => {
     fetchPlanDetail();
   }, [id]);
+
+  // 新增：当计划详情加载完成后获取评分信息
+  useEffect(() => {
+    if (!id) return;
+    const planId = Number(id);
+    const run = async () => {
+      await Promise.all([
+        fetchRatingSummary(planId),
+        fetchMyRating(planId),
+        fetchRecentRatings(planId)
+      ]);
+    };
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planDetail?.id]);
 
   const fetchPlanDetail = async () => {
     try {
@@ -116,6 +136,77 @@ const PlanDetailPage: React.FC = () => {
       console.error('获取计划详情失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // =============== 评分相关函数 ===============
+  const fetchRatingSummary = async (planId: number) => {
+    try {
+      const resp = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_RATINGS_SUMMARY(planId)));
+      if (resp.ok) {
+        const data = await resp.json();
+        setRatingSummary(data);
+      }
+    } catch (err) {
+      console.error('获取评分汇总失败:', err);
+    }
+  };
+
+  const fetchMyRating = async (planId: number) => {
+    try {
+      const resp = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_RATINGS_ME(planId)));
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data) {
+          setMyRating({ score: data.score, comment: data.comment || '' });
+        } else {
+          setMyRating({ score: null, comment: '' });
+        }
+      }
+    } catch (err) {
+      console.error('获取个人评分失败:', err);
+    }
+  };
+
+  const fetchRecentRatings = async (planId: number) => {
+    try {
+      const resp = await authFetch(buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLAN_RATINGS(planId)}?skip=0&limit=5`));
+      if (resp.ok) {
+        const data = await resp.json();
+        setRecentRatings(data || []);
+      }
+    } catch (err) {
+      console.error('获取评分列表失败:', err);
+    }
+  };
+
+  const submitRating = async () => {
+    if (!id) return;
+    const planId = Number(id);
+    if (!myRating.score) {
+      message.warning('请先选择评分星级');
+      return;
+    }
+    try {
+      setSubmittingRating(true);
+      const resp = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_RATINGS(planId)), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score: myRating.score, comment: myRating.comment })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setRatingSummary(data.summary);
+        message.success('评分已提交');
+        fetchRecentRatings(planId);
+      } else {
+        message.error('提交评分失败');
+      }
+    } catch (err) {
+      console.error('提交评分失败:', err);
+      message.error('提交评分失败');
+    } finally {
+      setSubmittingRating(false);
     }
   };
 
@@ -1156,6 +1247,66 @@ const PlanDetailPage: React.FC = () => {
                         <Text strong>总计</Text>
                         <Text strong>¥{currentPlan.total_cost?.total || 0}</Text>
                       </Row>
+                    </Space>
+                  </Card>
+
+                  {/* 新增：用户评分 */}
+                  <Card title="用户评分" size="small">
+                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                      <Row justify="space-between" align="middle">
+                        <Col>
+                          <Text>平均分</Text>
+                        </Col>
+                        <Col>
+                          <Space>
+                            <Rate disabled value={ratingSummary?.average ? Math.round(ratingSummary.average) : 0} />
+                            <Text>{ratingSummary ? ratingSummary.average.toFixed(1) : 'N/A'}</Text>
+                            <Text type="secondary">({ratingSummary?.count || 0} 人评分)</Text>
+                          </Space>
+                        </Col>
+                      </Row>
+                      <Divider style={{ margin: '8px 0' }} />
+                      <Text strong>你的评分</Text>
+                      <Rate 
+                        value={myRating.score || 0} 
+                        onChange={(value) => setMyRating(prev => ({ ...prev, score: value }))} 
+                      />
+                      <Input.TextArea 
+                        value={myRating.comment} 
+                        onChange={(e) => setMyRating(prev => ({ ...prev, comment: e.target.value }))} 
+                        rows={3} 
+                        placeholder="写下你的评价（可选）" 
+                      />
+                      <Button type="primary" onClick={submitRating} loading={submittingRating}>提交评分</Button>
+
+                      {recentRatings && recentRatings.length > 0 && (
+                        <>
+                          <Divider style={{ margin: '8px 0' }} />
+                          <List
+                            size="small"
+                            header={<Text type="secondary">最近评分</Text>}
+                            dataSource={recentRatings}
+                            renderItem={(rt: any) => (
+                              <List.Item>
+                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                  <Space>
+                                    <Rate disabled value={rt.score} style={{ fontSize: 14 }} />
+                                    <Text>{rt.score}</Text>
+                                    {rt.created_at && (
+                                      <Text type="secondary" style={{ fontSize: 12 }}>
+                                        {new Date(rt.created_at).toLocaleString()}
+                                      </Text>
+                                    )}
+                                  </Space>
+                                  {rt.comment && (
+                                    <Text type="secondary" style={{ fontSize: 12 }}>{rt.comment}</Text>
+                                  )}
+                                </Space>
+                              </List.Item>
+                            )}
+                          />
+                        </>
+                      )}
                     </Space>
                   </Card>
 

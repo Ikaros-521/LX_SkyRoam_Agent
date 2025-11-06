@@ -244,6 +244,7 @@ const DestinationsPage: React.FC = () => {
                       fallback={getFallbackImage(d)}
                       alt={d.name}
                       height={160}
+                      preview={false}
                       style={{ objectFit: 'cover', borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
                       onError={(e) => {
                         const img = e.currentTarget as HTMLImageElement;

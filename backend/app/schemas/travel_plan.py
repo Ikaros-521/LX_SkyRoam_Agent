@@ -171,3 +171,27 @@ class TravelPlanExportRequest(BaseModel):
 class TravelPlanBatchDeleteRequest(BaseModel):
     """批量删除旅行计划请求体"""
     ids: List[int] = Field(..., description="要删除的旅行计划ID列表", min_length=1)
+
+# =============== 评分相关模式 ===============
+class TravelPlanRatingCreate(BaseModel):
+    """创建/更新评分请求体"""
+    score: int = Field(..., ge=1, le=5, description="评分(1-5)")
+    comment: Optional[str] = Field(None, description="评分备注")
+
+class TravelPlanRatingResponse(BaseModel):
+    """评分记录响应"""
+    id: int
+    travel_plan_id: int
+    user_id: int
+    score: int
+    comment: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TravelPlanRatingSummary(BaseModel):
+    """评分汇总响应"""
+    average: float
+    count: int

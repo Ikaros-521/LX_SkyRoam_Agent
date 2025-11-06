@@ -48,6 +48,8 @@ class TravelPlan(BaseModel):
     user = relationship("User", back_populates="travel_plans")
     
     items = relationship("TravelPlanItem", back_populates="travel_plan", cascade="all, delete-orphan")
+    # 新增：用户评分关系
+    ratings = relationship("TravelPlanRating", back_populates="travel_plan", cascade="all, delete-orphan")
     
     def __repr__(self):
         try:
@@ -92,3 +94,26 @@ class TravelPlanItem(BaseModel):
             return f"<TravelPlanItem(id={obj_id})>"
         except Exception:
             return f"<TravelPlanItem(instance)>"
+
+
+# 新增：旅行计划评分模型
+class TravelPlanRating(BaseModel):
+    """旅行计划评分模型"""
+    __tablename__ = "travel_plan_ratings"
+
+    # 评分信息
+    travel_plan_id = Column(Integer, ForeignKey("travel_plans.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    score = Column(Integer, nullable=False)  # 1-5 星
+    comment = Column(Text, nullable=True)
+
+    # 关系
+    travel_plan = relationship("TravelPlan", back_populates="ratings")
+    # 可选：如果需要从评分查到用户，可后续加反向关系
+
+    def __repr__(self):
+        try:
+            obj_id = getattr(self, 'id', 'N/A')
+            return f"<TravelPlanRating(id={obj_id})>"
+        except Exception:
+            return f"<TravelPlanRating(instance)>"
