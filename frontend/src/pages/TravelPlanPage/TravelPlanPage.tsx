@@ -827,15 +827,17 @@ const TravelPlanPage: React.FC = () => {
             </Row>
             
             <Row gutter={[24, 16]}>
-              <Col xs={24} sm={12}>
+              <Col xs={24} sm={12} style={{ minWidth: 0 }}>
                 <Form.Item
                   name="dateRange"
                   label="出行时间"
                   rules={[{ required: true, message: '请选择出行时间' }]}
                 >
                   <RangePicker 
-                    style={{ width: '100%' }}
-                    placeholder={['出发日期', '返回日期']}
+                    className="mobile-vertical-range"
+                    popupClassName="mobile-vertical-range-dropdown"
+                    style={{ width: '100%', minWidth: 0 }}
+                    placeholder={["出发日期", "返回日期"]}
                   />
                 </Form.Item>
               </Col>

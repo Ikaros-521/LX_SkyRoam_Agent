@@ -126,3 +126,26 @@ img {
     display: none !important;
   }
 }
+
+/* 移动端将 RangePicker 弹层的两个面板上下排列，避免横向溢出 */
+@media (max-width: 576px) {
+  .mobile-vertical-range-dropdown {
+    max-width: 100vw;
+  }
+  .mobile-vertical-range-dropdown .ant-picker-panels {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+  }
+  .mobile-vertical-range-dropdown .ant-picker-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+  /* 可选：在小屏隐藏箭头，避免遮挡 */
+  .mobile-vertical-range-dropdown .ant-picker-range-arrow {
+    display: none;
+  }
+}
+
+
