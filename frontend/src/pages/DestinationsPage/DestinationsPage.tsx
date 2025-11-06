@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Row, Col, Typography, Input, Space, Tag, Image, Modal, List, Button, Spin, Empty } from 'antd';
+import { Card, Row, Col, Typography, Input, Space, Tag, Image, Modal, List, Button, Spin, Empty, Carousel } from 'antd';
 import { GlobalOutlined, SearchOutlined, EnvironmentOutlined, CalendarOutlined, DollarOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -23,6 +23,7 @@ interface Destination {
   popularity_score?: number;
   cost_level?: string; // low, medium, high
   images?: string[];
+  continent?: string; // 新增：洲别（亚洲、欧洲、美洲、大洋洲、非洲）
 }
 
 interface TravelPlan {
@@ -40,18 +41,18 @@ interface TravelPlan {
 
 // 默认热门目的地数据（当后台无数据或加载失败时展示）
 const DEFAULT_DESTINATIONS: Destination[] = [
-  { id: 1, name: '北京', country: '中国', city: '北京', region: '华北', best_time_to_visit: '4-6月、9-10月', cost_level: '中', popularity_score: 95, description: '历史与现代交织的城市，故宫与长城闻名于世。', highlights: ['天安门广场', '故宫', '八达岭长城', '颐和园', '南锣鼓巷'] },
-  { id: 2, name: '上海', country: '中国', city: '上海', region: '华东', best_time_to_visit: '3-5月、9-11月', cost_level: '中-高', popularity_score: 92, description: '国际化都市，外滩与东方明珠地标林立。', highlights: ['外滩', '东方明珠', '城隍庙', '田子坊', '迪士尼'] },
-  { id: 3, name: '香港', country: '中国', city: '香港', region: '华南', best_time_to_visit: '10-12月、3-5月', cost_level: '高', popularity_score: 90, description: '亚洲金融中心，美食购物与夜景皆精彩。', highlights: ['维多利亚港', '太平山顶', '旺角', '迪士尼', '海洋公园'] },
-  { id: 4, name: '东京', country: '日本', city: '东京', region: '关东', best_time_to_visit: '3-4月樱花季、10-11月红叶季', cost_level: '中-高', popularity_score: 94, description: '传统与科技并存，街区文化与美食丰富。', highlights: ['浅草寺', '秋叶原', '涩谷', '东京塔', '上野公园'] },
-  { id: 5, name: '京都', country: '日本', city: '京都', region: '关西', best_time_to_visit: '3-4月樱花季、11月红叶季', cost_level: '中', popularity_score: 89, description: '古都风情，神社寺庙与和风街巷。', highlights: ['清水寺', '伏见稻荷大社', '岚山', '金阁寺', '祇园'] },
-  { id: 6, name: '大阪', country: '日本', city: '大阪', region: '关西', best_time_to_visit: '4-6月、10-11月', cost_level: '中', popularity_score: 87, description: '活力都市，美食与娱乐集大成。', highlights: ['大阪城', '道顿堀', '环球影城', '黑门市场', '梅田空中庭园'] },
-  { id: 7, name: '巴黎', country: '法国', city: '巴黎', region: '法兰西岛', best_time_to_visit: '4-6月、9-10月', cost_level: '高', popularity_score: 96, description: '浪漫之都，艺术与建筑的殿堂。', highlights: ['埃菲尔铁塔', '卢浮宫', '凯旋门', '塞纳河', '巴黎圣母院'] },
-  { id: 8, name: '伦敦', country: '英国', city: '伦敦', region: '英格兰', best_time_to_visit: '5-9月', cost_level: '高', popularity_score: 91, description: '历史与现代交融的世界城市。', highlights: ['大英博物馆', '伦敦塔桥', '白金汉宫', '西敏寺', '伦敦眼'] },
-  { id: 9, name: '纽约', country: '美国', city: '纽约', region: '纽约州', best_time_to_visit: '4-6月、9-11月', cost_level: '高', popularity_score: 93, description: '不夜城，文化与金融中心。', highlights: ['自由女神像', '时代广场', '中央公园', '大都会博物馆', '布鲁克林大桥'] },
-  { id: 10, name: '新加坡', country: '新加坡', city: '新加坡', region: '东南亚', best_time_to_visit: '全年（避暑季降雨高峰）', cost_level: '中-高', popularity_score: 88, description: '花园城市，秩序与多元文化并存。', highlights: ['滨海湾花园', '鱼尾狮公园', '圣淘沙', '克拉码头', '牛车水'] },
-  { id: 11, name: '曼谷', country: '泰国', city: '曼谷', region: '中部', best_time_to_visit: '11-2月', cost_level: '中', popularity_score: 85, description: '微笑之国的门户，寺庙与夜市闻名。', highlights: ['大皇宫', '卧佛寺', '恰图恰周末市场', '考山路', '湄南河'] },
-  { id: 12, name: '巴塞罗那', country: '西班牙', city: '巴塞罗那', region: '加泰罗尼亚', best_time_to_visit: '4-6月、9-10月', cost_level: '中', popularity_score: 86, description: '高迪之城，建筑艺术与地中海风情。', highlights: ['圣家堂', '奎尔公园', '兰布拉大道', '巴特略之家', '海滨区'] },
+  { id: 1, name: '北京', country: '中国', city: '北京', region: '华北', continent: '亚洲', best_time_to_visit: '4-6月、9-10月', cost_level: '中', popularity_score: 95, description: '历史与现代交织的城市，故宫与长城闻名于世。', highlights: ['天安门广场', '故宫', '八达岭长城', '颐和园', '南锣鼓巷'], images: ['https://picsum.photos/seed/beijing/800/600'] },
+  { id: 2, name: '上海', country: '中国', city: '上海', region: '华东', continent: '亚洲', best_time_to_visit: '3-5月、9-11月', cost_level: '中-高', popularity_score: 92, description: '国际化都市，外滩与东方明珠地标林立。', highlights: ['外滩', '东方明珠', '城隍庙', '田子坊', '迪士尼'], images: ['https://picsum.photos/seed/shanghai/800/600'] },
+  { id: 3, name: '香港', country: '中国', city: '香港', region: '华南', continent: '亚洲', best_time_to_visit: '10-12月、3-5月', cost_level: '高', popularity_score: 90, description: '亚洲金融中心，美食购物与夜景皆精彩。', highlights: ['维多利亚港', '太平山顶', '旺角', '迪士尼', '海洋公园'], images: ['https://picsum.photos/seed/hongkong/800/600'] },
+  { id: 4, name: '东京', country: '日本', city: '东京', region: '关东', continent: '亚洲', best_time_to_visit: '3-4月樱花季、10-11月红叶季', cost_level: '中-高', popularity_score: 94, description: '传统与科技并存，街区文化与美食丰富。', highlights: ['浅草寺', '秋叶原', '涩谷', '东京塔', '上野公园'], images: ['https://kimi-web-img.moonshot.cn/img/cdn.visualwilderness.com/f67ffa1d10aae2e8fc89407abc33b98dd0ab0981.jpg'] },
+  { id: 5, name: '京都', country: '日本', city: '京都', region: '关西', continent: '亚洲', best_time_to_visit: '3-4月樱花季、11月红叶季', cost_level: '中', popularity_score: 89, description: '古都风情，神社寺庙与和风街巷。', highlights: ['清水寺', '伏见稻荷大社', '岚山', '金阁寺', '祇园'], images: ['https://kimi-web-img.moonshot.cn/img/t4.ftcdn.net/b1135b9652d1ced6c89f5427aa67d4acaf13df63.jpg'] },
+  { id: 6, name: '大阪', country: '日本', city: '大阪', region: '关西', continent: '亚洲', best_time_to_visit: '4-6月、10-11月', cost_level: '中', popularity_score: 87, description: '活力都市，美食与娱乐集大成。', highlights: ['大阪城', '道顿堀', '环球影城', '黑门市场', '梅田空中庭园'], images: ['https://picsum.photos/seed/osaka/800/600'] },
+  { id: 7, name: '巴黎', country: '法国', city: '巴黎', region: '法兰西岛', continent: '欧洲', best_time_to_visit: '4-6月、9-10月', cost_level: '高', popularity_score: 96, description: '浪漫之都，艺术与建筑的殿堂。', highlights: ['埃菲尔铁塔', '卢浮宫', '凯旋门', '塞纳河', '巴黎圣母院'], images: ['https://kimi-web-img.moonshot.cn/img/res.cloudinary.com/f2f3ad305fff24c7348dc0d5654d0dfb9d8a9e8e'] },
+  { id: 8, name: '伦敦', country: '英国', city: '伦敦', region: '英格兰', continent: '欧洲', best_time_to_visit: '5-9月', cost_level: '高', popularity_score: 91, description: '历史与现代交融的世界城市。', highlights: ['大英博物馆', '伦敦塔桥', '白金汉宫', '西敏寺', '伦敦眼'], images: ['https://picsum.photos/seed/london/800/600'] },
+  { id: 9, name: '纽约', country: '美国', city: '纽约', region: '纽约州', continent: '美洲', best_time_to_visit: '4-6月、9-11月', cost_level: '高', popularity_score: 93, description: '不夜城，文化与金融中心。', highlights: ['自由女神像', '时代广场', '中央公园', '大都会博物馆', '布鲁克林大桥'], images: ['https://kimi-web-img.moonshot.cn/img/images.squarespace-cdn.com/bf537a708e57e7aa7de2bb39d360534877f4a5dc.jpg'] },
+  { id: 10, name: '新加坡', country: '新加坡', city: '新加坡', region: '东南亚', continent: '亚洲', best_time_to_visit: '全年（避暑季降雨高峰）', cost_level: '中-高', popularity_score: 88, description: '花园城市，秩序与多元文化并存。', highlights: ['滨海湾花园', '鱼尾狮公园', '圣淘沙', '克拉码头', '牛车水'], images: ['https://picsum.photos/seed/singapore/800/600'] },
+  { id: 11, name: '曼谷', country: '泰国', city: '曼谷', region: '中部', continent: '亚洲', best_time_to_visit: '11-2月', cost_level: '中', popularity_score: 85, description: '微笑之国的门户，寺庙与夜市闻名。', highlights: ['大皇宫', '卧佛寺', '恰图恰周末市场', '考山路', '湄南河'], images: ['https://picsum.photos/seed/bangkok/800/600'] },
+  { id: 12, name: '巴塞罗那', country: '西班牙', city: '巴塞罗那', region: '加泰罗尼亚', continent: '欧洲', best_time_to_visit: '4-6月、9-10月', cost_level: '中', popularity_score: 86, description: '高迪之城，建筑艺术与地中海风情。', highlights: ['圣家堂', '奎尔公园', '兰布拉大道', '巴特略之家', '海滨区'], images: ['https://picsum.photos/seed/barcelona/800/600'] },
 ];
 
 const DestinationsPage: React.FC = () => {
@@ -60,6 +61,7 @@ const DestinationsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState<string>('');
+  const [filterContinent, setFilterContinent] = useState<string>('全部');
 
   // 相关方案弹窗
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -141,15 +143,65 @@ const DestinationsPage: React.FC = () => {
       </div>
 
       <Card style={{ marginBottom: 16 }}>
-        <Input
-          allowClear
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索目的地（名称、国家、城市、区域、描述）"
-          prefix={<SearchOutlined />}
-        />
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Input
+            allowClear
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜索目的地（名称、国家、城市、区域、描述）"
+            prefix={<SearchOutlined />}
+          />
+          <Space wrap>
+            {['全部', '亚洲', '欧洲', '美洲', '大洋洲', '非洲'].map((c) => (
+              <Button key={c} type={filterContinent === c ? 'primary' : 'default'} shape="round" onClick={() => setFilterContinent(c)}>
+                {c}
+              </Button>
+            ))}
+          </Space>
+        </Space>
       </Card>
 
+      {/* 热门推荐轮播 */}
+      <Card style={{ marginBottom: 24 }}>
+        <Title level={4} style={{ marginBottom: 12 }}>热门推荐目的地</Title>
+        <Carousel autoplay dots>
+          {DEFAULT_DESTINATIONS.filter(d => (d.popularity_score || 0) >= 92).map((d) => {
+            const cover = (d.images && d.images[0]) || undefined;
+            return (
+              <div key={d.id}>
+                <Row gutter={16} align="middle">
+                  <Col xs={24} md={10}>
+                    {cover && (
+                      <Image src={cover} alt={d.name} height={220} style={{ objectFit: 'cover', width: '100%' }} />
+                    )}
+                  </Col>
+                  <Col xs={24} md={14}>
+                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                      <Title level={4} style={{ margin: 0 }}>{d.name}</Title>
+                      <Text type="secondary"><EnvironmentOutlined /> {d.country}{d.city ? ` · ${d.city}` : ''}</Text>
+                      {d.best_time_to_visit && <Text type="secondary"><CalendarOutlined /> 最佳旅行时间：{d.best_time_to_visit}</Text>}
+                      {d.highlights && d.highlights.length > 0 && (
+                        <>
+                          <Text type="secondary">热门景点：</Text>
+                          <Space wrap>
+                            {d.highlights.slice(0, 6).map((h) => <Tag key={h}>{h}</Tag>)}
+                          </Space>
+                        </>
+                      )}
+                      <Space>
+                        <Button type="primary" onClick={() => openPlansModal(d)}>查看相关方案</Button>
+                        <Button onClick={() => setFilterContinent(d.continent || '全部')}>同洲筛选</Button>
+                      </Space>
+                    </Space>
+                  </Col>
+                </Row>
+              </div>
+            );
+          })}
+        </Carousel>
+      </Card>
+
+      {/* 目的地网格 */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}>
           <Spin size="large" />
