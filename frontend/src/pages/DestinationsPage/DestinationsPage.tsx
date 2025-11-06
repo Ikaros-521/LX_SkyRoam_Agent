@@ -404,7 +404,7 @@ const DestinationsPage: React.FC = () => {
                             <EnvironmentOutlined /> {p.destination} · {dayjs(p.start_date).format('YYYY-MM-DD')} ~ {dayjs(p.end_date).format('YYYY-MM-DD')}
                           </Text>
                           <Space>
-                            <Tag color="blue">状态：{p.status}</Tag>
+                            <Tag color="blue">状态：{({ draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败', archived: '已归档' } as Record<string, string>)[p.status] || p.status}</Tag>
                             {typeof p.budget === 'number' && <Tag color="orange"><DollarOutlined /> 预算：¥{p.budget}</Tag>}
                             {typeof p.score === 'number' && <Tag color="gold">评分：{p.score}</Tag>}
                           </Space>
