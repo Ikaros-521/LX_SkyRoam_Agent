@@ -1282,10 +1282,10 @@ class DataCollector:
             List[Dict[str, Any]]: 小红书笔记数据列表
         """
         try:
-            logger.info(f"🔍 开始收集小红书数据: {destination}")
+            logger.info(f"🔍 开始收集小红书数据: {destination}，检索内容：{destination}旅游攻略")
             
             # 使用小红书API客户端搜索笔记
-            response = await self.xhs_client.search_notes(destination, limit=12)
+            response = await self.xhs_client.search_notes(f"{destination}旅游攻略", limit=12)
             
             if not response or response.get("status") != "success":
                 logger.error(f"❌ 小红书API调用失败: {response}")
