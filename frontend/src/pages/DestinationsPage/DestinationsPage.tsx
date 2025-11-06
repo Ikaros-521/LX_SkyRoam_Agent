@@ -127,12 +127,12 @@ const DestinationsPage: React.FC = () => {
     setActiveDest(d);
     setModalOpen(true);
     setPlansLoading(true);
-    setPlanQ('');
+    setPlanQ(d.name || '');
     setPlanMinScore(undefined);
     setPlanDateRange([]);
     setPlanStatus('全部');
     try {
-      // 加载个人方案与公开方案并合并，前端按目的地过滤
+      // 加载个人方案与公开方案并合并，前端按目的地关键词包含过滤
       const [resPrivate, resPublic] = await Promise.all([
         authFetch(buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLANS}?skip=0&limit=100`)),
         fetch(buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLANS_PUBLIC}?skip=0&limit=100`))
@@ -143,9 +143,16 @@ const DestinationsPage: React.FC = () => {
       const dataPublic = await resPublic.json();
       const listPrivate: TravelPlan[] = Array.isArray(dataPrivate?.plans) ? dataPrivate.plans : (Array.isArray(dataPrivate) ? dataPrivate : []);
       const listPublic: TravelPlan[] = Array.isArray(dataPublic?.plans) ? dataPublic.plans : (Array.isArray(dataPublic) ? dataPublic : []);
-      const targetName = d.name?.toLowerCase();
-      const matchedPrivate = listPrivate.filter((p) => p.destination?.toLowerCase() === targetName);
-      const matchedPublic = listPublic.filter((p) => p.destination?.toLowerCase() === targetName);
+
+      const targetName = (d.name || '').trim().toLowerCase();
+      const cityName = (d.city || '').trim().toLowerCase();
+      const matchByDestination = (p: TravelPlan) => {
+        const dest = (p.destination || '').toLowerCase();
+        return dest.includes(targetName) || (!!cityName && dest.includes(cityName));
+      };
+
+      const matchedPrivate = listPrivate.filter(matchByDestination);
+      const matchedPublic = listPublic.filter(matchByDestination);
       const mergedMap = new Map<number, TravelPlan>();
       [...matchedPublic, ...matchedPrivate].forEach((p) => mergedMap.set(p.id, p));
       setPlans(Array.from(mergedMap.values()));
@@ -405,17 +412,20 @@ const DestinationsPage: React.FC = () => {
           ) : (
             <List
               dataSource={filteredPlans}
+              grid={{ gutter: 12, column: 2 }}
+              pagination={{ pageSize: 8, hideOnSinglePage: true }}
+              size="small"
               renderItem={(p) => (
                 <List.Item>
-                  <Card hoverable style={{ width: '100%' }}>
-                    <Row gutter={16} align="middle">
+                  <Card hoverable style={{ width: '100%' }} bodyStyle={{ padding: 12 }}>
+                    <Row gutter={12} align="middle">
                       <Col flex="auto">
-                        <Space direction="vertical" size={6}>
-                          <Title level={5} style={{ margin: 0 }}>{p.title}</Title>
-                          <Text type="secondary">
+                        <Space direction="vertical" size={4}>
+                          <Text strong ellipsis style={{ fontSize: 16 }}>{p.title}</Text>
+                          <Text type="secondary" ellipsis>
                             <EnvironmentOutlined /> {p.destination} · {dayjs(p.start_date).format('YYYY-MM-DD')} ~ {dayjs(p.end_date).format('YYYY-MM-DD')}
                           </Text>
-                          <Space>
+                          <Space wrap>
                               <Tag color="blue">状态：{({ draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败', archived: '已归档' } as Record<string, string>)[p.status] || p.status}</Tag>
                               {typeof p.budget === 'number' && <Tag color="orange"><DollarOutlined /> 预算：¥{p.budget}</Tag>}
                               {typeof p.score === 'number' && <Tag color="gold">评分：{p.score}</Tag>}
