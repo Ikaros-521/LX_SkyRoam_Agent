@@ -197,6 +197,8 @@ const PlanDetailPage: React.FC = () => {
       if (resp.ok) {
         const data = await resp.json();
         setRatingSummary(data.summary);
+        // 同步顶部评分的本地显示（不必等待重新获取详情）
+        setPlanDetail(prev => prev ? { ...prev, score: data.summary.average } : prev);
         message.success('评分已提交');
         fetchRecentRatings(planId);
       } else {
@@ -395,7 +397,7 @@ const PlanDetailPage: React.FC = () => {
                   {planDetail.duration_days} 天
                 </Tag>
                 <Tag color="orange" icon={<StarOutlined />}>
-                  评分: {planDetail.score?.toFixed(1) || 'N/A'}
+                  评分: {ratingSummary ? ratingSummary.average.toFixed(1) : (planDetail.score?.toFixed(1) || 'N/A')}
                 </Tag>
               </Space>
             </Space>
