@@ -107,6 +107,7 @@ async def get_travel_plans(
         created_to=created_to,
         travel_from=travel_from,
         travel_to=travel_to,
+        exclude_public=(not is_admin(current_user)),
     )
     return {
         "plans": plans,
@@ -114,6 +115,76 @@ async def get_travel_plans(
         "skip": skip,
         "limit": limit,
     }
+
+# =============== 公开访问相关端点 ===============
+@router.get("/public")
+async def list_public_travel_plans(
+    skip: int = 0,
+    limit: int = 100,
+    destination: Optional[str] = None,
+    keyword: Optional[str] = None,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """公开列表：无需登录，支持目的地和关键词检索"""
+    service = TravelPlanService(db)
+    plans, total = await service.get_public_travel_plans_with_total(
+        skip=skip,
+        limit=limit,
+        destination=destination,
+        keyword=keyword,
+    )
+    return {
+        "plans": plans,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+@router.get("/public/{plan_id}", response_model=TravelPlanResponse)
+async def get_public_travel_plan(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """公开详情：无需登录，仅公开计划可访问"""
+    service = TravelPlanService(db)
+    plan = await service.get_public_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="公开旅行计划不存在")
+    return plan
+
+@router.put("/{plan_id}/publish")
+async def publish_travel_plan(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """发布为公开方案（需拥有或管理员）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权发布该计划")
+    await service.set_public_status(plan_id, True)
+    plan = await service.get_travel_plan(plan_id)
+    return TravelPlanResponse.from_orm(plan)
+
+@router.put("/{plan_id}/unpublish")
+async def unpublish_travel_plan(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """取消公开（需拥有或管理员）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权取消公开该计划")
+    await service.set_public_status(plan_id, False)
+    plan = await service.get_travel_plan(plan_id)
+    return TravelPlanResponse.from_orm(plan)
 
 
 @router.get("/{plan_id}", response_model=TravelPlanResponse)

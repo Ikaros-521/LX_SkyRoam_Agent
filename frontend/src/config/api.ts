@@ -29,6 +29,11 @@ export const API_ENDPOINTS = {
   TRAVEL_PLAN_STATUS: (id: number) => `/travel-plans/${id}/status`,
   TRAVEL_PLAN_SELECT: (id: number) => `/travel-plans/${id}/select-plan`,
   TRAVEL_PLANS_BATCH_DELETE: '/travel-plans/batch-delete',
+  // 新增：公开相关
+  TRAVEL_PLANS_PUBLIC: '/travel-plans/public',
+  TRAVEL_PLAN_PUBLIC_DETAIL: (id: number) => `/travel-plans/public/${id}`,
+  TRAVEL_PLAN_PUBLISH: (id: number) => `/travel-plans/${id}/publish`,
+  TRAVEL_PLAN_UNPUBLISH: (id: number) => `/travel-plans/${id}/unpublish`,
   // 新增：评分相关
   TRAVEL_PLAN_RATINGS: (id: number) => `/travel-plans/${id}/ratings`,
   TRAVEL_PLAN_RATINGS_SUMMARY: (id: number) => `/travel-plans/${id}/ratings/summary`,

@@ -2,7 +2,7 @@
 旅行计划模型
 """
 
-from sqlalchemy import Column, String, Text, Integer, Float, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, String, Text, Integer, Float, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import BaseModel
@@ -42,7 +42,11 @@ class TravelPlan(BaseModel):
     # 状态
     status = Column(String(20), default="draft", nullable=False)  # draft, generating, completed, archived
     score = Column(Float, nullable=True)  # 方案评分
-    
+
+    # 公开
+    is_public = Column(Boolean, default=False, nullable=False)
+    public_at = Column(DateTime, nullable=True)
+
     # 关联关系
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="travel_plans")

@@ -60,6 +60,7 @@ class TravelPlanService:
         created_to: Optional[datetime] = None,
         travel_from: Optional[date] = None,
         travel_to: Optional[date] = None,
+        exclude_public: bool = False,
     ) -> Tuple[List[TravelPlanResponse], int]:
         """获取旅行计划列表和总数，支持筛选；评分使用 travel_plan_ratings 的平均分"""
         conditions = []
@@ -74,6 +75,8 @@ class TravelPlanService:
                 TravelPlan.destination.ilike(like),
                 TravelPlan.description.ilike(like)
             ))
+        if exclude_public:
+            conditions.append(TravelPlan.is_public == False)
         # 评分过滤将使用评分子查询的平均分，不再使用 TravelPlan.score
         # 统一将有时区的时间转换为UTC再去除时区，与数据库的UTC无时区字段比较
         def _normalize(dt: Optional[datetime]) -> Optional[datetime]:
@@ -251,28 +254,32 @@ class TravelPlanService:
         existing_res = await self.db.execute(existing_q)
         rating = existing_res.scalar_one_or_none()
         if rating:
-            rating.score = score
-            rating.comment = comment
+            await self.db.execute(
+                update(TravelPlanRating)
+                .where(TravelPlanRating.id == rating.id)
+                .values(score=score, comment=comment)
+            )
         else:
-            rating = TravelPlanRating(
+            new_rating = TravelPlanRating(
                 travel_plan_id=plan_id,
                 user_id=user_id,
                 score=score,
                 comment=comment
             )
-            self.db.add(rating)
+            self.db.add(new_rating)
         await self.db.commit()
-
-        # 计算汇总
-        summary_q = select(func.avg(TravelPlanRating.score), func.count(TravelPlanRating.id)).where(
-            TravelPlanRating.travel_plan_id == plan_id
+        
+        # 汇总
+        summary_q = (
+            select(func.avg(TravelPlanRating.score), func.count(TravelPlanRating.id))
+            .where(TravelPlanRating.travel_plan_id == plan_id)
         )
         summary_res = await self.db.execute(summary_q)
-        avg, cnt = summary_res.first()
-        return float(avg or 0), int(cnt or 0)
+        avg_score, count = summary_res.first() or (None, 0)
+        return float(avg_score) if avg_score is not None else 0.0, int(count or 0)
 
     async def get_ratings(self, plan_id: int, skip: int = 0, limit: int = 10) -> List[TravelPlanRating]:
-        """获取某方案的评分列表"""
+        """获取评分列表"""
         q = (
             select(TravelPlanRating)
             .where(TravelPlanRating.travel_plan_id == plan_id)
@@ -285,18 +292,101 @@ class TravelPlanService:
 
     async def get_rating_summary(self, plan_id: int) -> Tuple[float, int]:
         """获取评分汇总(平均分, 数量)"""
-        summary_q = select(func.avg(TravelPlanRating.score), func.count(TravelPlanRating.id)).where(
-            TravelPlanRating.travel_plan_id == plan_id
+        q = (
+            select(func.avg(TravelPlanRating.score), func.count(TravelPlanRating.id))
+            .where(TravelPlanRating.travel_plan_id == plan_id)
         )
-        summary_res = await self.db.execute(summary_q)
-        avg, cnt = summary_res.first()
-        return float(avg or 0), int(cnt or 0)
+        res = await self.db.execute(q)
+        avg_score, count = res.first() or (None, 0)
+        return float(avg_score) if avg_score is not None else 0.0, int(count or 0)
 
     async def get_rating_by_user(self, plan_id: int, user_id: int) -> Optional[TravelPlanRating]:
-        """获取当前用户对该方案的评分记录"""
-        q = select(TravelPlanRating).where(
-            TravelPlanRating.travel_plan_id == plan_id,
-            TravelPlanRating.user_id == user_id
+        """获取某用户对方案的评分(如无则返回None)"""
+        q = (
+            select(TravelPlanRating)
+            .where(
+                TravelPlanRating.travel_plan_id == plan_id,
+                TravelPlanRating.user_id == user_id
+            )
+        )
+        res = await self.db.execute(q)
+        return res.scalar_one_or_none()
+
+    # =============== 公开相关方法 ===============
+    async def set_public_status(self, plan_id: int, is_public: bool) -> bool:
+        """设置方案公开状态"""
+        values = {"is_public": is_public}
+        if is_public:
+            values["public_at"] = datetime.utcnow()
+        else:
+            values["public_at"] = None
+        await self.db.execute(
+            update(TravelPlan)
+            .where(TravelPlan.id == plan_id)
+            .values(**values)
+        )
+        await self.db.commit()
+        return True
+
+    async def get_public_travel_plans_with_total(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        destination: Optional[str] = None,
+        keyword: Optional[str] = None,
+    ) -> Tuple[List[TravelPlanResponse], int]:
+        """获取公开旅行计划列表及总数，支持目的地和关键词筛选"""
+        conditions = [TravelPlan.is_public == True]
+        if destination:
+            conditions.append(TravelPlan.destination.ilike(f"%{destination}%"))
+        if keyword:
+            like = f"%{keyword}%"
+            conditions.append(or_(
+                TravelPlan.title.ilike(like),
+                TravelPlan.description.ilike(like)
+            ))
+        # 评分平均分子查询
+        rating_subq = (
+            select(
+                TravelPlanRating.travel_plan_id.label("tp_id"),
+                func.avg(TravelPlanRating.score).label("avg_score")
+            )
+            .group_by(TravelPlanRating.travel_plan_id)
+        ).subquery()
+
+        count_q = (
+            select(func.count(TravelPlan.id))
+            .select_from(TravelPlan)
+            .outerjoin(rating_subq, TravelPlan.id == rating_subq.c.tp_id)
+            .where(*conditions)
+        )
+        count_res = await self.db.execute(count_q)
+        total = count_res.scalar() or 0
+
+        q = (
+            select(TravelPlan, rating_subq.c.avg_score)
+            .outerjoin(rating_subq, TravelPlan.id == rating_subq.c.tp_id)
+            .options(selectinload(TravelPlan.items))
+            .where(*conditions)
+            .order_by(TravelPlan.public_at.desc().nulls_last(), TravelPlan.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        res = await self.db.execute(q)
+        rows = res.all()
+        responses: List[TravelPlanResponse] = []
+        for plan, avg_score in rows:
+            resp = TravelPlanResponse.from_orm(plan)
+            resp.score = float(avg_score) if avg_score is not None else None
+            responses.append(resp)
+        return responses, total
+
+    async def get_public_travel_plan(self, plan_id: int) -> Optional[TravelPlan]:
+        """获取公开的旅行计划详情（仅公开）"""
+        q = (
+            select(TravelPlan)
+            .options(selectinload(TravelPlan.items))
+            .where(TravelPlan.id == plan_id, TravelPlan.is_public == True)
         )
         res = await self.db.execute(q)
         return res.scalar_one_or_none()

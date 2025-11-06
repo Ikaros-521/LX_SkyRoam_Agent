@@ -37,6 +37,7 @@ interface TravelPlan {
   budget?: number;
   status: string;
   score?: number;
+  is_public?: boolean;
 }
 
 // 默认热门目的地数据（当后台无数据或加载失败时展示）
@@ -131,14 +132,23 @@ const DestinationsPage: React.FC = () => {
     setPlanDateRange([]);
     setPlanStatus('全部');
     try {
-      // 取当前用户的计划列表，然后在前端按目的地过滤
-      const res = await authFetch(buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLANS}?skip=0&limit=100`));
-      if (!res.ok) throw new Error(`加载方案失败 (${res.status})`);
-      const data = await res.json();
-      const list: TravelPlan[] = Array.isArray(data?.plans) ? data.plans : [];
+      // 加载个人方案与公开方案并合并，前端按目的地过滤
+      const [resPrivate, resPublic] = await Promise.all([
+        authFetch(buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLANS}?skip=0&limit=100`)),
+        fetch(buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLANS_PUBLIC}?skip=0&limit=100`))
+      ]);
+      if (!resPrivate.ok) throw new Error(`加载个人方案失败 (${resPrivate.status})`);
+      if (!resPublic.ok) throw new Error(`加载公开方案失败 (${resPublic.status})`);
+      const dataPrivate = await resPrivate.json();
+      const dataPublic = await resPublic.json();
+      const listPrivate: TravelPlan[] = Array.isArray(dataPrivate?.plans) ? dataPrivate.plans : (Array.isArray(dataPrivate) ? dataPrivate : []);
+      const listPublic: TravelPlan[] = Array.isArray(dataPublic?.plans) ? dataPublic.plans : (Array.isArray(dataPublic) ? dataPublic : []);
       const targetName = d.name?.toLowerCase();
-      const matched = list.filter((p) => p.destination?.toLowerCase() === targetName);
-      setPlans(matched);
+      const matchedPrivate = listPrivate.filter((p) => p.destination?.toLowerCase() === targetName);
+      const matchedPublic = listPublic.filter((p) => p.destination?.toLowerCase() === targetName);
+      const mergedMap = new Map<number, TravelPlan>();
+      [...matchedPublic, ...matchedPrivate].forEach((p) => mergedMap.set(p.id, p));
+      setPlans(Array.from(mergedMap.values()));
     } catch (e: any) {
       setPlans([]);
     } finally {
@@ -406,10 +416,11 @@ const DestinationsPage: React.FC = () => {
                             <EnvironmentOutlined /> {p.destination} · {dayjs(p.start_date).format('YYYY-MM-DD')} ~ {dayjs(p.end_date).format('YYYY-MM-DD')}
                           </Text>
                           <Space>
-                            <Tag color="blue">状态：{({ draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败', archived: '已归档' } as Record<string, string>)[p.status] || p.status}</Tag>
-                            {typeof p.budget === 'number' && <Tag color="orange"><DollarOutlined /> 预算：¥{p.budget}</Tag>}
-                            {typeof p.score === 'number' && <Tag color="gold">评分：{p.score}</Tag>}
-                          </Space>
+                              <Tag color="blue">状态：{({ draft: '草稿', generating: '生成中', completed: '已完成', failed: '失败', archived: '已归档' } as Record<string, string>)[p.status] || p.status}</Tag>
+                              {typeof p.budget === 'number' && <Tag color="orange"><DollarOutlined /> 预算：¥{p.budget}</Tag>}
+                              {typeof p.score === 'number' && <Tag color="gold">评分：{p.score}</Tag>}
+                              {p.is_public && <Tag color="cyan">公开</Tag>}
+                            </Space>
                         </Space>
                       </Col>
                       <Col>

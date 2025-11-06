@@ -39,7 +39,7 @@ import {
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
-import { authFetch } from '../../utils/auth';
+import { authFetch, getToken } from '../../utils/auth';
 import MapComponent from '../../components/MapComponent/MapComponent';
 
 const { Title, Text } = Typography;
@@ -88,6 +88,8 @@ interface PlanDetail {
   selected_plan: any;
   status: string;
   score: number;
+  is_public?: boolean;
+  public_at?: string | null;
 }
 
 const PlanDetailPage: React.FC = () => {
@@ -104,14 +106,17 @@ const PlanDetailPage: React.FC = () => {
   const [myRating, setMyRating] = useState<{ score: number | null; comment: string }>({ score: null, comment: '' });
   const [recentRatings, setRecentRatings] = useState<any[]>([]);
   const [submittingRating, setSubmittingRating] = useState(false);
+  const [isPublicView, setIsPublicView] = useState<boolean>(!getToken());
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     fetchPlanDetail();
   }, [id]);
 
-  // 新增：当计划详情加载完成后获取评分信息
+  // 新增：当计划详情加载完成后获取评分信息（公开视图不请求）
   useEffect(() => {
     if (!id) return;
+    if (isPublicView) return;
     const planId = Number(id);
     const run = async () => {
       await Promise.all([
@@ -122,18 +127,44 @@ const PlanDetailPage: React.FC = () => {
     };
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planDetail?.id]);
+  }, [planDetail?.id, isPublicView]);
 
   const fetchPlanDetail = async () => {
     try {
-      const response = await authFetch(buildApiUrl(`/travel-plans/${id}`));
-      if (!response.ok) {
-        throw new Error('获取计划详情失败');
+      if (!id) throw new Error('缺少计划ID');
+      const planId = Number(id);
+      const token = getToken();
+
+      if (token) {
+        // 优先尝试私有详情；若403/404则回退到公开详情
+        const respPrivate = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_DETAIL(planId)));
+        if (respPrivate.ok) {
+          const data = await respPrivate.json();
+          setIsPublicView(false);
+          setPlanDetail(data);
+        } else if (respPrivate.status === 403 || respPrivate.status === 404) {
+          const respPublic = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_PUBLIC_DETAIL(planId)));
+          if (respPublic.ok) {
+            const data = await respPublic.json();
+            setIsPublicView(true);
+            setPlanDetail(data);
+          } else {
+            throw new Error(`获取计划公开详情失败 (${respPublic.status})`);
+          }
+        } else {
+          throw new Error(`获取计划详情失败 (${respPrivate.status})`);
+        }
+      } else {
+        // 未登录用户直接走公开详情
+        const respPublic = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_PUBLIC_DETAIL(planId)));
+        if (!respPublic.ok) throw new Error(`获取计划公开详情失败 (${respPublic.status})`);
+        const data = await respPublic.json();
+        setIsPublicView(true);
+        setPlanDetail(data);
       }
-      const data = await response.json();
-      setPlanDetail(data);
     } catch (error) {
       console.error('获取计划详情失败:', error);
+      message.error('无法加载计划详情');
     } finally {
       setLoading(false);
     }
@@ -213,6 +244,10 @@ const PlanDetailPage: React.FC = () => {
   };
 
   const handleSelectPlan = async (planIndex: number) => {
+    if (isPublicView) {
+      message.info('公开视图不可选择方案');
+      return;
+    }
     try {
       const response = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_SELECT(Number(id))), {
         method: 'POST',
@@ -236,6 +271,11 @@ const PlanDetailPage: React.FC = () => {
   };
 
   const handleExport = async (format: string) => {
+    if (isPublicView) {
+      message.info('公开视图不可导出');
+      setExportModalVisible(false);
+      return;
+    }
     try {
       const response = await authFetch(buildApiUrl(`/travel-plans/${id}/export?format=${format}`));
       if (response.ok) {
@@ -246,6 +286,30 @@ const PlanDetailPage: React.FC = () => {
       console.error('导出失败:', error);
     }
     setExportModalVisible(false);
+  };
+
+  // 新增：发布/取消发布切换
+  const togglePublish = async () => {
+    if (!id || !planDetail) return;
+    const planId = Number(id);
+    setPublishing(true);
+    try {
+      const endpoint = planDetail.is_public
+        ? API_ENDPOINTS.TRAVEL_PLAN_UNPUBLISH(planId)
+        : API_ENDPOINTS.TRAVEL_PLAN_PUBLISH(planId);
+      const resp = await authFetch(buildApiUrl(endpoint), { method: 'PUT', headers: { 'Content-Type': 'application/json' } });
+      if (resp.ok) {
+        await fetchPlanDetail();
+        message.success(planDetail.is_public ? '已取消公开' : '已公开发布');
+      } else {
+        message.error('操作失败');
+      }
+    } catch (err) {
+      console.error('发布/取消发布失败:', err);
+      message.error('发布操作失败');
+    } finally {
+      setPublishing(false);
+    }
   };
 
   if (loading) {
@@ -399,17 +463,24 @@ const PlanDetailPage: React.FC = () => {
                 <Tag color="orange" icon={<StarOutlined />}>
                   评分: {ratingSummary ? ratingSummary.average.toFixed(1) : (planDetail.score?.toFixed(1) || 'N/A')}
                 </Tag>
+                {typeof planDetail.is_public !== 'undefined' && (
+                  <Tag color={planDetail.is_public ? 'cyan' : 'default'}>
+                    {planDetail.is_public ? '公开' : '私密'}
+                  </Tag>
+                )}
               </Space>
             </Space>
           </Col>
           <Col xs={24} md={8}>
             <Space>
-              <Button 
-                icon={<EditOutlined />}
-                onClick={() => navigate(`/plan?edit=${id}`)}
-              >
-                编辑
-              </Button>
+              {!isPublicView && (
+                <Button 
+                  icon={<EditOutlined />}
+                  onClick={() => navigate(`/plan?edit=${id}`)}
+                >
+                  编辑
+                </Button>
+              )}
               <Button 
                 icon={<ShareAltOutlined />}
                 onClick={() => {
@@ -424,13 +495,20 @@ const PlanDetailPage: React.FC = () => {
               >
                 分享
               </Button>
-              <Button 
-                type="primary"
-                icon={<ExportOutlined />}
-                onClick={() => setExportModalVisible(true)}
-              >
-                导出
-              </Button>
+              {!isPublicView && (
+                <>
+                  <Button type="default" icon={<CloudOutlined />} loading={publishing} onClick={togglePublish}>
+                    {planDetail.is_public ? '取消公开' : '公开发布'}
+                  </Button>
+                  <Button 
+                    type="primary"
+                    icon={<ExportOutlined />}
+                    onClick={() => setExportModalVisible(true)}
+                  >
+                    导出
+                  </Button>
+                </>
+              )}
             </Space>
           </Col>
         </Row>
@@ -1270,16 +1348,20 @@ const PlanDetailPage: React.FC = () => {
                       <Divider style={{ margin: '8px 0' }} />
                       <Text strong>你的评分</Text>
                       <Rate 
+                        disabled={isPublicView}
                         value={myRating.score || 0} 
                         onChange={(value) => setMyRating(prev => ({ ...prev, score: value }))} 
                       />
                       <Input.TextArea 
+                        disabled={isPublicView}
                         value={myRating.comment} 
                         onChange={(e) => setMyRating(prev => ({ ...prev, comment: e.target.value }))} 
                         rows={3} 
                         placeholder="写下你的评价（可选）" 
                       />
-                      <Button type="primary" onClick={submitRating} loading={submittingRating}>提交评分</Button>
+                      {!isPublicView && (
+                        <Button type="primary" onClick={submitRating} loading={submittingRating}>提交评分</Button>
+                      )}
 
                       {recentRatings && recentRatings.length > 0 && (
                         <>
@@ -1660,6 +1742,9 @@ const PlanDetailPage: React.FC = () => {
         footer={null}
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Text type="secondary">
+            当前状态：{planDetail.is_public ? '公开' : '私密'}{planDetail.public_at ? `（公开于 ${new Date(planDetail.public_at).toLocaleString()}）` : ''}
+          </Text>
           <Text>分享链接：</Text>
           <Space>
             <Input value={window.location.href} readOnly style={{ width: 360 }} />

@@ -109,6 +109,9 @@ class TravelPlanResponse(TravelPlanBase):
     created_at: datetime
     updated_at: datetime
     items: Optional[List[TravelPlanItemResponse]] = None
+    # 新增：公开字段
+    is_public: bool = False
+    public_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -140,7 +143,9 @@ class TravelPlanResponse(TravelPlanBase):
             'selected_plan': obj.selected_plan,
             'created_at': obj.created_at,
             'updated_at': obj.updated_at,
-            'items': []  # 初始化为空列表，避免访问关系属性
+            'items': [],  # 初始化为空列表，避免访问关系属性
+            'is_public': getattr(obj, 'is_public', False),
+            'public_at': getattr(obj, 'public_at', None),
         }
         return cls(**data)
 
