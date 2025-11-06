@@ -92,12 +92,24 @@ const DestinationsPage: React.FC = () => {
 
   const filteredDestinations = useMemo(() => {
     const keyword = q.trim().toLowerCase();
-    if (!keyword) return destinations;
-    return destinations.filter((d) => {
-      const hay = [d.name, d.city, d.country, d.region, d.description].filter(Boolean).join(' ').toLowerCase();
-      return hay.includes(keyword);
-    });
-  }, [destinations, q]);
+    
+    let results = destinations;
+
+    // 1. 按大洲筛选
+    if (filterContinent !== '全部') {
+      results = results.filter(d => d.continent === filterContinent);
+    }
+
+    // 2. 按关键字筛选
+    if (keyword) {
+      results = results.filter((d) => {
+        const hay = [d.name, d.city, d.country, d.region, d.description].filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(keyword);
+      });
+    }
+
+    return results;
+  }, [destinations, q, filterContinent]);
 
   const coverImage = (d: Destination) => {
     const imgs = d.images || [];
