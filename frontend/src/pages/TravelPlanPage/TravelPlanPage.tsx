@@ -867,7 +867,6 @@ const TravelPlanPage: React.FC = () => {
                   rules={[{ required: true, message: '请选择预算范围' }]}
                 >
                   <Select placeholder="选择预算范围">
-                    <Option value={0}>不限</Option>
                     <Option value={200}>200元以下</Option>
                     <Option value={500}>500元以下</Option>
                     <Option value={1000}>1000元以下</Option>
