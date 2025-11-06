@@ -58,7 +58,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const baseMenuItems = [
     { key: '/', label: '首页', icon: <HomeOutlined /> },
     { key: '/destinations', label: '目的地', icon: <EnvironmentOutlined /> },
-    { key: '/history', label: '历史记录', icon: <HistoryOutlined /> },
+    { key: '/plans', label: '计划库', icon: <HistoryOutlined /> },
     { key: '/about', label: '关于我们', icon: <InfoCircleOutlined /> },
   ];
   const menuItems = baseMenuItems;

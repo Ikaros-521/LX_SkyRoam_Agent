@@ -123,15 +123,21 @@ async def list_public_travel_plans(
     limit: int = 100,
     destination: Optional[str] = None,
     keyword: Optional[str] = None,
+    min_score: Optional[float] = None,
+    travel_from: Optional[date] = Query(None, description="出行日期起(YYYY-MM-DD)"),
+    travel_to: Optional[date] = Query(None, description="出行日期止(YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """公开列表：无需登录，支持目的地和关键词检索"""
+    """公开列表：无需登录，支持目的地、关键词、评分与出行日期检索"""
     service = TravelPlanService(db)
     plans, total = await service.get_public_travel_plans_with_total(
         skip=skip,
         limit=limit,
         destination=destination,
         keyword=keyword,
+        min_score=min_score,
+        travel_from=travel_from,
+        travel_to=travel_to,
     )
     return {
         "plans": plans,

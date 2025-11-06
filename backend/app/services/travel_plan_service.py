@@ -334,8 +334,11 @@ class TravelPlanService:
         limit: int = 100,
         destination: Optional[str] = None,
         keyword: Optional[str] = None,
+        min_score: Optional[float] = None,
+        travel_from: Optional[date] = None,
+        travel_to: Optional[date] = None,
     ) -> Tuple[List[TravelPlanResponse], int]:
-        """获取公开旅行计划列表及总数，支持目的地和关键词筛选"""
+        """获取公开旅行计划列表及总数，支持目的地、关键词、评分与出行日期筛选"""
         conditions = [TravelPlan.is_public == True]
         if destination:
             conditions.append(TravelPlan.destination.ilike(f"%{destination}%"))
@@ -345,6 +348,43 @@ class TravelPlanService:
                 TravelPlan.title.ilike(like),
                 TravelPlan.description.ilike(like)
             ))
+        # 出行日期过滤：将纯日期转换为整日边界
+        def _normalize(dt: Optional[datetime]) -> Optional[datetime]:
+            if not dt:
+                return None
+            try:
+                if dt.tzinfo is not None:
+                    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt
+            except Exception:
+                return None
+        def day_start(d: Optional[date]) -> Optional[datetime]:
+            if not d:
+                return None
+            try:
+                if isinstance(d, datetime):
+                    base = _normalize(d) or d
+                    return datetime(base.year, base.month, base.day, 0, 0, 0)
+                return datetime(d.year, d.month, d.day, 0, 0, 0)
+            except Exception:
+                return None
+        def day_end(d: Optional[date]) -> Optional[datetime]:
+            if not d:
+                return None
+            try:
+                if isinstance(d, datetime):
+                    base = _normalize(d) or d
+                    return datetime(base.year, base.month, base.day, 23, 59, 59, 999999)
+                return datetime(d.year, d.month, d.day, 23, 59, 59, 999999)
+            except Exception:
+                return None
+        t_from = day_start(travel_from)
+        t_to = day_end(travel_to)
+        if t_from:
+            conditions.append(TravelPlan.end_date >= t_from)
+        if t_to:
+            conditions.append(TravelPlan.start_date <= t_to)
+
         # 评分平均分子查询
         rating_subq = (
             select(
@@ -360,6 +400,8 @@ class TravelPlanService:
             .outerjoin(rating_subq, TravelPlan.id == rating_subq.c.tp_id)
             .where(*conditions)
         )
+        if min_score is not None:
+            count_q = count_q.where(rating_subq.c.avg_score >= float(min_score))
         count_res = await self.db.execute(count_q)
         total = count_res.scalar() or 0
 
@@ -372,6 +414,8 @@ class TravelPlanService:
             .offset(skip)
             .limit(limit)
         )
+        if min_score is not None:
+            q = q.where(rating_subq.c.avg_score >= float(min_score))
         res = await self.db.execute(q)
         rows = res.all()
         responses: List[TravelPlanResponse] = []

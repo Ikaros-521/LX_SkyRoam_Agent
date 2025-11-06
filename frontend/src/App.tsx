@@ -9,7 +9,6 @@ import Layout from './components/Layout/Layout';
 import HomePage from './pages/HomePage/HomePage';
 import TravelPlanPage from './pages/TravelPlanPage/TravelPlanPage';
 import PlanDetailPage from './pages/PlanDetailPage/PlanDetailPage';
-import HistoryPage from './pages/HistoryPage/HistoryPage';
 import AboutPage from './pages/AboutPage/AboutPage';
 import TestPage from './pages/TestPage/TestPage';
 import LoginPage from './pages/LoginPage/LoginPage';
@@ -18,6 +17,7 @@ import RequireAdmin from './components/Auth/RequireAdmin';
 import UsersAdminPage from './pages/Admin/UsersAdminPage';
 import HistoryAdminPage from './pages/Admin/HistoryAdminPage';
 import DestinationsPage from './pages/DestinationsPage/DestinationsPage';
+import PlansLibraryPage from './pages/PlansLibraryPage/PlansLibraryPage';
 
 const App: React.FC = () => {
   return (
@@ -30,7 +30,8 @@ const App: React.FC = () => {
               <Route path="/test" element={<TestPage />} />
               <Route path="/plan" element={<TravelPlanPage />} />
               <Route path="/plan/:id" element={<PlanDetailPage />} />
-              <Route path="/history" element={<HistoryPage />} />
+              <Route path="/plans" element={<PlansLibraryPage />} />
+              <Route path="/history" element={<PlansLibraryPage />} />
               <Route path="/destinations" element={<DestinationsPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/login" element={<LoginPage />} />
