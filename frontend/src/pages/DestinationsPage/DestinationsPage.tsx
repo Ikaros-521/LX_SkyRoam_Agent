@@ -171,9 +171,18 @@ const DestinationsPage: React.FC = () => {
               <div key={d.id}>
                 <Row gutter={16} align="middle">
                   <Col xs={24} md={10}>
-                    {cover && (
-                      <Image src={cover} alt={d.name} height={220} style={{ objectFit: 'cover', width: '100%' }} />
-                    )}
+                    <Image
+                       src={resolveLocalImage(d)}
+                       fallback={getFallbackImage(d)}
+                       alt={d.name}
+                       height={220}
+                       style={{ objectFit: 'cover', width: '100%' }}
+                       onError={(e) => {
+                         const img = e.currentTarget as HTMLImageElement;
+                         const fb = getFallbackImage(d);
+                         if (img.src !== fb) img.src = fb;
+                       }}
+                     />
                   </Col>
                   <Col xs={24} md={14}>
                     <Space direction="vertical" size={6} style={{ width: '100%' }}>
@@ -217,9 +226,19 @@ const DestinationsPage: React.FC = () => {
                 <Card
                   hoverable
                   onClick={() => openPlansModal(d)}
-                  cover={cover ? (
-                    <Image src={cover} alt={d.name} height={160} style={{ objectFit: 'cover' }} />
-                  ) : undefined}
+                  cover={(
+                    <Image src={resolveLocalImage(d)}
+                      fallback={getFallbackImage(d)}
+                      alt={d.name}
+                      height={160}
+                      style={{ objectFit: 'cover' }}
+                      onError={(e) => {
+                        const img = e.currentTarget as HTMLImageElement;
+                        const fb = getFallbackImage(d);
+                        if (img.src !== fb) img.src = fb;
+                      }}
+                    />
+                  )}
                 >
                   <Space direction="vertical" size={6} style={{ width: '100%' }}>
                     <Title level={4} style={{ margin: 0 }}>{d.name}</Title>
@@ -328,3 +347,13 @@ const DestinationsPage: React.FC = () => {
 };
 
 export default DestinationsPage;
+
+const toSlug = (name: string) =>
+  name.trim().replace(/\s+/g, '-');
+const resolveLocalImage = (d: Destination) =>
+  `/static/images/destinations/${toSlug(d.name)}.jpg`;
+const getFallbackImage = (d: Destination) => {
+  const imgs = Array.isArray(d.images) ? d.images : [];
+  const first = imgs.find((u) => typeof u === 'string' && u.length > 0);
+  return first || `https://picsum.photos/seed/${toSlug(d.name)}/800/600`;
+};

@@ -11,6 +11,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 from dotenv import load_dotenv
+from fastapi.staticfiles import StaticFiles
 
 # 加载环境变量
 env_path = Path(__file__).parent / ".env"
@@ -83,6 +84,12 @@ app.add_middleware(
 
 # 限流中间件（按IP）
 app.add_middleware(RateLimitMiddleware)
+
+# 挂载静态文件目录（用于图片等静态资源）
+# 优先挂载静态文件路由，确保在文件不存在时能正确返回404，而不是被后续中间件或路由错误处理
+STATIC_DIR = Path(__file__).parent / "uploads"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # 注册API路由
 app.include_router(api_router, prefix="/api/v1")
