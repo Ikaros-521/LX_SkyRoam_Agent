@@ -60,8 +60,8 @@ class TravelPlanService:
         created_to: Optional[datetime] = None,
         travel_from: Optional[date] = None,
         travel_to: Optional[date] = None,
-    ) -> Tuple[List[TravelPlan], int]:
-        """获取旅行计划列表和总数，支持筛选"""
+    ) -> Tuple[List[TravelPlanResponse], int]:
+        """获取旅行计划列表和总数，支持筛选；评分使用 travel_plan_ratings 的平均分"""
         conditions = []
         if user_id:
             conditions.append(TravelPlan.user_id == user_id)
@@ -74,10 +74,7 @@ class TravelPlanService:
                 TravelPlan.destination.ilike(like),
                 TravelPlan.description.ilike(like)
             ))
-        if min_score is not None:
-            conditions.append(TravelPlan.score >= float(min_score))
-        if max_score is not None:
-            conditions.append(TravelPlan.score <= float(max_score))
+        # 评分过滤将使用评分子查询的平均分，不再使用 TravelPlan.score
         # 统一将有时区的时间转换为UTC再去除时区，与数据库的UTC无时区字段比较
         def _normalize(dt: Optional[datetime]) -> Optional[datetime]:
             if not dt:
@@ -126,19 +123,57 @@ class TravelPlanService:
         if t_to:
             conditions.append(TravelPlan.start_date <= t_to)
         
-        count_query = select(func.count(TravelPlan.id))
+        # 评分平均分子查询（每个方案一条记录）
+        rating_subq = (
+            select(
+                TravelPlanRating.travel_plan_id.label("tp_id"),
+                func.avg(TravelPlanRating.score).label("avg_score")
+            )
+            .group_by(TravelPlanRating.travel_plan_id)
+        ).subquery()
+        
+        # 统计总数（包含评分过滤）
+        count_query = (
+            select(func.count(TravelPlan.id))
+            .select_from(TravelPlan)
+            .outerjoin(rating_subq, TravelPlan.id == rating_subq.c.tp_id)
+        )
         if conditions:
             count_query = count_query.where(*conditions)
+        if min_score is not None:
+            count_query = count_query.where(rating_subq.c.avg_score >= float(min_score))
+        if max_score is not None:
+            count_query = count_query.where(rating_subq.c.avg_score <= float(max_score))
         count_result = await self.db.execute(count_query)
-        total = count_result.scalar()
+        total = count_result.scalar() or 0
         
-        query = select(TravelPlan).options(selectinload(TravelPlan.items))
+        # 查询列表并携带平均分
+        query = (
+            select(TravelPlan, rating_subq.c.avg_score)
+            .outerjoin(rating_subq, TravelPlan.id == rating_subq.c.tp_id)
+            .options(selectinload(TravelPlan.items))
+            .order_by(TravelPlan.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
         if conditions:
             query = query.where(*conditions)
-        query = query.offset(skip).limit(limit).order_by(TravelPlan.created_at.desc())
+        if min_score is not None:
+            query = query.where(rating_subq.c.avg_score >= float(min_score))
+        if max_score is not None:
+            query = query.where(rating_subq.c.avg_score <= float(max_score))
+        
         result = await self.db.execute(query)
-        plans = result.scalars().all()
-        return plans, total
+        rows = result.all()
+        
+        # 构建响应：用平均分填充 score（无评分则为 None）
+        responses: List[TravelPlanResponse] = []
+        for plan, avg_score in rows:
+            resp = TravelPlanResponse.from_orm(plan)
+            resp.score = float(avg_score) if avg_score is not None else None
+            responses.append(resp)
+        
+        return responses, total
     
     async def get_travel_plan(self, plan_id: int) -> Optional[TravelPlan]:
         """获取单个旅行计划"""
