@@ -88,6 +88,11 @@ async def get_travel_plans(
     created_to: Optional[datetime] = Query(None, description="创建时间止(ISO8601, 支持Z)"),
     travel_from: Optional[date] = Query(None, description="出行日期起(YYYY-MM-DD)"),
     travel_to: Optional[date] = Query(None, description="出行日期止(YYYY-MM-DD)"),
+    plan_source: Optional[str] = Query(
+        None,
+        description="方案来源过滤: private(仅私有)、public(仅公开)、未传表示全部",
+        regex="^(private|public)$"
+    ),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -107,7 +112,7 @@ async def get_travel_plans(
         created_to=created_to,
         travel_from=travel_from,
         travel_to=travel_to,
-        exclude_public=(not is_admin(current_user)),
+        plan_source=plan_source,
     )
     return {
         "plans": plans,

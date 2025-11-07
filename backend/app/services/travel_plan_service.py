@@ -157,7 +157,7 @@ class TravelPlanService:
         created_to: Optional[datetime] = None,
         travel_from: Optional[date] = None,
         travel_to: Optional[date] = None,
-        exclude_public: bool = False,
+        plan_source: Optional[str] = None,
     ) -> Tuple[List[TravelPlanResponse], int]:
         """获取旅行计划列表和总数，支持筛选；评分使用 travel_plan_ratings 的平均分"""
         conditions = []
@@ -172,8 +172,10 @@ class TravelPlanService:
                 TravelPlan.destination.ilike(like),
                 TravelPlan.description.ilike(like)
             ))
-        if exclude_public:
+        if plan_source == "private":
             conditions.append(TravelPlan.is_public == False)
+        elif plan_source == "public":
+            conditions.append(TravelPlan.is_public == True)
         # 评分过滤将使用评分子查询的平均分，不再使用 TravelPlan.score
         # 统一将有时区的时间转换为UTC再去除时区，与数据库的UTC无时区字段比较
         def _normalize(dt: Optional[datetime]) -> Optional[datetime]:
