@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 from loguru import logger
 import re
 import json
-
+import traceback
 
 class DataProcessor:
     """数据处理器"""
@@ -49,6 +49,7 @@ class DataProcessor:
             return processed_data
             
         except Exception as e:
+            logger.error(traceback.format_exc())
             logger.error(f"数据处理失败: {e}")
             return []
     
@@ -268,8 +269,19 @@ class DataProcessor:
         # 价格验证
         price_fields = ["price", "price_per_night"]
         for field in price_fields:
-            if field in item and item[field] < 0:
+            if field not in item:
+                continue
+            value = item[field]
+            if value is None:
+                continue
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if numeric_value < 0:
+                logger.warning(f"{data_type} 数据价格字段 {field} 为负数，记录将被丢弃: {item}")
                 return False
+            item[field] = numeric_value
         
         # 评分验证
         if "rating" in item and (item["rating"] < 0 or item["rating"] > 5):
