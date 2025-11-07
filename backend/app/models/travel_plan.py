@@ -53,18 +53,14 @@ class TravelPlan(BaseModel):
     def _as_dict(value):
         return value if isinstance(value, dict) else {}
 
-    def _get_preference_value(self, *keys):
-        """从preferences或requirements中提取值"""
+    def _get_preference_value(self, key):
+        """从preferences中获取指定字段"""
         prefs = self._as_dict(getattr(self, "preferences", None))
-        reqs = self._as_dict(getattr(self, "requirements", None))
-        for source in (prefs, reqs):
-            for key in keys:
-                if key in source and source[key] not in (None, ""):
-                    return source[key]
-        return None
+        value = prefs.get(key)
+        return value if value not in ("", None) else None
 
-    def _get_list_value(self, *keys):
-        value = self._get_preference_value(*keys)
+    def _get_list_value(self, key):
+        value = self._get_preference_value(key)
         if value is None:
             return None
         if isinstance(value, list):
@@ -75,7 +71,7 @@ class TravelPlan(BaseModel):
 
     @property
     def travelers(self):
-        value = self._get_preference_value("travelers", "travelers_count")
+        value = self._get_preference_value("travelers")
         if value is None:
             return 1
         try:
@@ -85,15 +81,15 @@ class TravelPlan(BaseModel):
 
     @property
     def ageGroups(self):
-        return self._get_list_value("ageGroups", "age_groups")
+        return self._get_list_value("ageGroups")
 
     @property
     def foodPreferences(self):
-        return self._get_list_value("foodPreferences", "food_preferences")
+        return self._get_list_value("foodPreferences")
 
     @property
     def dietaryRestrictions(self):
-        return self._get_list_value("dietaryRestrictions", "dietary_restrictions")
+        return self._get_list_value("dietaryRestrictions")
     
     def __repr__(self):
         try:

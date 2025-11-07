@@ -14,69 +14,93 @@ from app.schemas.travel_plan import TravelPlanCreate, TravelPlanUpdate, TravelPl
 class TravelPlanService:
     """旅行计划服务"""
     
-    _TRAVELER_META_FIELDS = ("travelers", "ageGroups", "foodPreferences", "dietaryRestrictions")
+    _TRAVELER_PREF_KEYS = (
+        "travelers",
+        "ageGroups",
+        "foodPreferences",
+        "dietaryRestrictions",
+    )
 
     def __init__(self, db: AsyncSession):
         self.db = db
 
     @classmethod
     def _extract_traveler_meta(cls, data: Dict[str, Any]) -> Dict[str, Any]:
-        """从payload中提取旅行者相关字段，并从原数据中移除"""
+        """提取旅行者相关字段，支持顶层和preferences中读取"""
         extracted: Dict[str, Any] = {}
-        for field in cls._TRAVELER_META_FIELDS:
-            if field in data:
-                extracted[field] = data.pop(field)
+
+        for key in cls._TRAVELER_PREF_KEYS:
+            if key in data:
+                extracted[key] = data.pop(key)
+
+        prefs = data.get("preferences")
+        if isinstance(prefs, dict):
+            for key in cls._TRAVELER_PREF_KEYS:
+                if key not in extracted and key in prefs:
+                    extracted[key] = prefs[key]
+
         return extracted
 
     @staticmethod
+    def _normalize_int(value: Any) -> Optional[int]:
+        if value in ("", None):
+            return None
+        if isinstance(value, bool):
+            return int(value)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _normalize_list(value: Any) -> Optional[List[Any]]:
+        if value in (None, ""):
+            return None
+        if isinstance(value, list):
+            return value
+        return [value]
+
     def _merge_traveler_meta(
+        self,
         preferences: Optional[Dict[str, Any]],
         requirements: Optional[Dict[str, Any]],
         traveler_meta: Dict[str, Any],
     ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """将旅行者信息合并到preferences/requirements中"""
+        """将旅行者信息统一写入preferences"""
         prefs = dict(preferences or {})
         reqs = dict(requirements or {})
 
-        if not traveler_meta:
-            return (prefs or None, reqs or None)
+        # 旅行人数
+        traveler_value = traveler_meta.get("travelers", prefs.get("travelers"))
+        traveler_value = self._normalize_int(traveler_value)
+        if traveler_value is not None:
+            prefs["travelers"] = traveler_value
+        else:
+            prefs.pop("travelers", None)
 
-        travelers = traveler_meta.get("travelers", None)
-        if travelers is not None:
-            if travelers in ("", None):
-                prefs.pop("travelers", None)
-                prefs.pop("travelers_count", None)
-                reqs.pop("travelers_count", None)
-            else:
-                prefs["travelers"] = travelers
-                prefs["travelers_count"] = travelers
-                reqs["travelers_count"] = travelers
+        # 年龄组成
+        age_groups = traveler_meta.get("ageGroups", prefs.get("ageGroups"))
+        age_groups = self._normalize_list(age_groups)
+        if age_groups:
+            prefs["ageGroups"] = age_groups
+        else:
+            prefs.pop("ageGroups", None)
 
-        age_groups = traveler_meta.get("ageGroups", None)
-        if age_groups is not None:
-            if age_groups:
-                prefs["age_groups"] = age_groups
-            else:
-                prefs.pop("age_groups", None)
+        # 口味偏好
+        food_preferences = traveler_meta.get("foodPreferences", prefs.get("foodPreferences"))
+        food_preferences = self._normalize_list(food_preferences)
+        if food_preferences:
+            prefs["foodPreferences"] = food_preferences
+        else:
+            prefs.pop("foodPreferences", None)
 
-        food_preferences = traveler_meta.get("foodPreferences", None)
-        if food_preferences is not None:
-            if food_preferences:
-                prefs["food_preferences"] = food_preferences
-            else:
-                prefs.pop("food_preferences", None)
-
-        dietary_restrictions = traveler_meta.get("dietaryRestrictions", None)
-        if dietary_restrictions is not None:
-            if dietary_restrictions:
-                prefs["dietary_restrictions"] = dietary_restrictions
-                if isinstance(dietary_restrictions, list):
-                    reqs["dietary_info"] = ", ".join(str(item) for item in dietary_restrictions if item is not None)
-                else:
-                    reqs["dietary_info"] = str(dietary_restrictions)
-            else:
-                prefs.pop("dietary_restrictions", None)
-                reqs.pop("dietary_info", None)
+        # 饮食禁忌
+        dietary_restrictions = traveler_meta.get("dietaryRestrictions", prefs.get("dietaryRestrictions"))
+        dietary_restrictions = self._normalize_list(dietary_restrictions)
+        if dietary_restrictions:
+            prefs["dietaryRestrictions"] = dietary_restrictions
+        else:
+            prefs.pop("dietaryRestrictions", None)
 
         return (prefs or None, reqs or None)
     

@@ -78,6 +78,7 @@ class PlanGenerator:
     ) -> List[Dict[str, Any]]:
         """生成多个旅行方案"""
         try:
+            preferences = self._normalize_preferences(preferences)
             logger.info("开始生成旅行方案")
             
             # 检查是否有多个偏好，决定使用拆分策略还是传统策略
@@ -141,6 +142,34 @@ class PlanGenerator:
             logger.error(f"生成旅行方案失败: {e}")
             return []
 
+    def _normalize_preferences(self, preferences: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """确保偏好字段存在并格式正确"""
+        normalized = dict(preferences or {})
+
+        def _set_default_list(key: str):
+            value = normalized.get(key)
+            if value is None:
+                normalized[key] = []
+            elif not isinstance(value, list):
+                normalized[key] = [value]
+
+        def _set_default_int(key: str, default: int = 1):
+            value = normalized.get(key)
+            if value is None:
+                normalized[key] = default
+                return
+            try:
+                normalized[key] = int(value)
+            except (TypeError, ValueError):
+                normalized[key] = default
+
+        _set_default_int("travelers", 1)
+        _set_default_list("ageGroups")
+        _set_default_list("foodPreferences")
+        _set_default_list("dietaryRestrictions")
+
+        return normalized
+
     def _should_use_split_strategy(self, preferences: Optional[Dict[str, Any]]) -> bool:
         """判断是否应该使用拆分策略"""
         if not preferences:
@@ -192,13 +221,15 @@ class PlanGenerator:
         if isinstance(activity_preferences, str):
             activity_preferences = [activity_preferences]
         
+        logger.warning(f"preference={preference}")
+
         # 基础偏好组（所有方案都包含）
         base_preferences = {
             'budget_priority': preferences.get('budget_priority', 'medium'),
-            'travelers_count': preferences.get('travelers_count', 1),
-            'food_preferences': preferences.get('food_preferences', []),
-            'dietary_restrictions': preferences.get('dietary_restrictions', []),
-            'age_groups': preferences.get('age_groups', [])
+            'travelers': preferences.get('travelers', 1),
+            'foodPreferences': preferences.get('foodPreferences', []),
+            'dietaryRestrictions': preferences.get('dietaryRestrictions', []),
+            'ageGroups': preferences.get('ageGroups', [])
         }
         
         # 如果没有活动偏好，返回基础偏好
@@ -327,6 +358,8 @@ class PlanGenerator:
     ) -> List[Dict[str, Any]]:
         """为单个偏好生成方案"""
         try:
+            # logger.warning(f"preference={preference}")
+
             # 构建针对性的系统提示
             focus = preference.get('focus', 'general')
             activity_pref = preference.get('activity_preference', 'culture')
@@ -447,10 +480,10 @@ class PlanGenerator:
 返回日期：{plan.end_date}
 预算：{plan.budget}元
 出行方式：{plan.transportation or '未指定'}
-旅行人数：{getattr(plan, 'travelers', 1)}人
-年龄群体：{', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'}
-饮食偏好：{', '.join(getattr(plan, 'foodPreferences', [])) if getattr(plan, 'foodPreferences', None) else '无特殊偏好'}
-饮食禁忌：{', '.join(getattr(plan, 'dietaryRestrictions', [])) if getattr(plan, 'dietaryRestrictions', None) else '无饮食禁忌'}
+旅行人数：{preferences.get('travelers', 1)}人
+年龄群体：{', '.join(preferences.get('ageGroups', [])) if preferences.get('ageGroups', None) else '未指定'}
+饮食偏好：{', '.join(preferences.get('foodPreferences', [])) if preferences.get('foodPreferences', None) else '无特殊偏好'}
+饮食禁忌：{', '.join(preferences.get('dietaryRestrictions', [])) if preferences.get('dietaryRestrictions', None) else '无饮食禁忌'}
 重点偏好：{activity_pref}
 特殊要求：{plan.requirements or '无特殊要求'}
 
@@ -1624,6 +1657,8 @@ class PlanGenerator:
     ) -> List[Dict[str, Any]]:
         """生成住宿方案（包含航班信息）"""
         try:
+            # logger.warning(f"preferences={preferences}")
+
             system_prompt = """你是一个专业的住宿规划师，专门为游客推荐合适的酒店和航班组合。
 请根据提供的真实酒店和航班数据，为用户生成2-3个不同价位的住宿方案。
 
@@ -1671,9 +1706,7 @@ class PlanGenerator:
 出发日期：{plan.start_date}
 返回日期：{plan.end_date}
 预算：{plan.budget}元
-旅行人数：{getattr(plan, 'travelers', 1)}人
-年龄群体：{', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'}
-用户偏好：{preferences or '无特殊偏好'}
+人数、群体以及用户偏好：{preferences or '无特殊偏好'}
 
 可用航班数据：
 {self._format_data_for_llm(flights_data, 'flight')}
@@ -1685,8 +1718,8 @@ class PlanGenerator:
 {self._format_xiaohongshu_data_for_prompt(raw_data.get('xiaohongshu_notes', []) if raw_data else [], plan.destination)}
 
 要求：
-1. 根据旅行人数({getattr(plan, 'travelers', 1)}人)合理安排房间数量和床位类型
-2. 考虑年龄群体({', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'})的住宿需求
+1. 根据旅行人数({preferences.get('travelers', 1)}人)合理安排房间数量和床位类型
+2. 考虑年龄群体({', '.join(preferences.get('ageGroups', [])) if preferences.get('ageGroups', None) else '未指定'})的住宿需求
 3. 航班时间要合理，避免红眼航班（除非预算紧张）
 4. 酒店位置要便于游览，交通便利
 5. 总费用要在预算范围内
@@ -1773,11 +1806,8 @@ class PlanGenerator:
 
 目的地：{plan.destination}
 旅行天数：{plan.duration_days}天
-旅行人数：{getattr(plan, 'travelers', 1)}人
-饮食偏好：{', '.join(getattr(plan, 'foodPreferences', [])) if getattr(plan, 'foodPreferences', None) else '无特殊偏好'}
-饮食禁忌：{', '.join(getattr(plan, 'dietaryRestrictions', [])) if getattr(plan, 'dietaryRestrictions', None) else '无饮食禁忌'}
 预算：{plan.budget}元
-用户偏好：{preferences or '无特殊偏好'}
+人数、群体、饮食偏好、饮食禁忌以及用户偏好：{preferences or '无特殊偏好'}
 
 可用餐厅数据：
 {self._format_data_for_llm(restaurants_data, 'restaurant')}
@@ -1868,10 +1898,9 @@ class PlanGenerator:
 
 目的地：{plan.destination}
 旅行天数：{plan.duration_days}天
-旅行人数：{getattr(plan, 'travelers', 1)}人
 出行方式偏好：{plan.transportation or '未指定'}
 预算：{plan.budget}元
-用户偏好：{preferences or '无特殊偏好'}
+人数、群体以及用户偏好：{preferences or '无特殊偏好'}
 
 可用交通数据：
 {self._format_data_for_llm(transportation_data, 'transportation')}
@@ -1984,11 +2013,9 @@ class PlanGenerator:
 
 目的地：{plan.destination}
 旅行天数：{plan.duration_days}天
-旅行人数：{getattr(plan, 'travelers', 1)}人
-年龄群体：{', '.join(getattr(plan, 'ageGroups', [])) if getattr(plan, 'ageGroups', None) else '未指定'}
 预算：{plan.budget}元
 特殊要求：{plan.requirements or '无特殊要求'}
-用户偏好：{preferences or '无特殊偏好'}
+人数、年龄群体以及用户偏好：{preferences or '无特殊偏好'}
 
 可用景点数据：
 {self._format_data_for_llm(attractions_data, 'attraction')}

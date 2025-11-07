@@ -192,31 +192,36 @@ const TravelPlanPage: React.FC = () => {
     
     try {
       // 创建旅行计划
+      const specialRequirements = typeof values.requirements === 'string'
+        ? values.requirements.trim()
+        : '';
+
+      const payload: Record<string, any> = {
+        title: (values.departure ? `${values.departure} → ` : '') + `${values.destination} 旅行计划`,
+        departure: values.departure || null,
+        destination: values.destination,
+        start_date: values.dateRange[0].format('YYYY-MM-DD HH:mm:ss'),
+        end_date: values.dateRange[1].format('YYYY-MM-DD HH:mm:ss'),
+        duration_days: values.dateRange[1].diff(values.dateRange[0], 'day') + 1,
+        budget: values.budget,
+        transportation: values.transportation,
+        preferences: { 
+          interests: values.preferences,
+          travelers: values.travelers,
+          foodPreferences: values.foodPreferences,
+          dietaryRestrictions: values.dietaryRestrictions,
+          ageGroups: values.ageGroups
+        }
+      };
+
+      if (specialRequirements) {
+        payload.requirements = { special_requirements: specialRequirements };
+      }
+
       const response = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLANS), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: (values.departure ? `${values.departure} → ` : '') + `${values.destination} 旅行计划`,
-          departure: values.departure || null,
-          destination: values.destination,
-          start_date: values.dateRange[0].format('YYYY-MM-DD HH:mm:ss'),
-          end_date: values.dateRange[1].format('YYYY-MM-DD HH:mm:ss'),
-          duration_days: values.dateRange[1].diff(values.dateRange[0], 'day') + 1,
-          budget: values.budget,
-          transportation: values.transportation,
-          preferences: { 
-            interests: values.preferences,
-            travelers: values.travelers,
-            food_preferences: values.foodPreferences,
-            dietary_restrictions: values.dietaryRestrictions,
-            age_groups: values.ageGroups
-          },
-          requirements: { 
-            special_requirements: values.requirements,
-            travelers_count: values.travelers,
-            dietary_info: values.dietaryRestrictions?.join(', ') || ''
-          }
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -258,10 +263,10 @@ const TravelPlanPage: React.FC = () => {
           preferences: {
             budget_priority: preferences.budget < 3000 ? 'low' : 'medium',
             activity_preference: preferences.preferences || ['culture'],
-            travelers_count: preferences.travelers,
-            food_preferences: preferences.foodPreferences,
-            dietary_restrictions: preferences.dietaryRestrictions,
-            age_groups: preferences.ageGroups
+            travelers: preferences.travelers,
+            foodPreferences: preferences.foodPreferences,
+            dietaryRestrictions: preferences.dietaryRestrictions,
+            ageGroups: preferences.ageGroups
           },
           requirements: preferences.requirements,
           num_plans: 3

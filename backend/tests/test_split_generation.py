@@ -32,10 +32,10 @@ async def test_split_generation():
         "preferences": {
             "budget_priority": "medium",
             "activity_preference": ["culture", "food", "nature"],  # 多个偏好
-            "travelers_count": 2,
-            "food_preferences": ["local"],
-            "dietary_restrictions": [],
-            "age_groups": ["adult"]
+            "travelers": 2,
+            "foodPreferences": ["local"],
+            "dietaryRestrictions": [],
+            "ageGroups": ["adult"]
         },
         "requirements": {
             "special_needs": "无特殊需求"
@@ -112,10 +112,10 @@ async def test_single_preference():
         "preferences": {
             "budget_priority": "medium",
             "activity_preference": ["culture"],  # 单个偏好
-            "travelers_count": 2,
-            "food_preferences": ["local"],
-            "dietary_restrictions": [],
-            "age_groups": ["adult"]
+            "travelers": 2,
+            "foodPreferences": ["local"],
+            "dietaryRestrictions": [],
+            "ageGroups": ["adult"]
         },
         "requirements": {
             "special_needs": "无特殊需求"
