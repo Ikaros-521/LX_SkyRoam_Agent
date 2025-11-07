@@ -108,6 +108,24 @@ const PlanDetailPage: React.FC = () => {
   const [submittingRating, setSubmittingRating] = useState(false);
   const [isPublicView, setIsPublicView] = useState<boolean>(!getToken());
   const [publishing, setPublishing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const token = getToken();
+      if (!token) { setIsAdmin(false); return; }
+      try {
+        const res = await authFetch(buildApiUrl('/users/me'));
+        if (res.ok) {
+          const me = await res.json();
+          setIsAdmin(me?.role === 'admin');
+        }
+      } catch (e) {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, []);
 
   useEffect(() => {
     fetchPlanDetail();
@@ -473,10 +491,10 @@ const PlanDetailPage: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <Space>
-              {!isPublicView && (
+              {!isPublicView && isAdmin && (
                 <Button 
                   icon={<EditOutlined />}
-                  onClick={() => navigate(`/plan?edit=${id}`)}
+                  onClick={() => navigate(`/plan/${id}/edit`)}
                 >
                   编辑
                 </Button>

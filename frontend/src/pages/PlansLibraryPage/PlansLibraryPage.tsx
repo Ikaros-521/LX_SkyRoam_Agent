@@ -26,6 +26,24 @@ type TabKey = 'my' | 'public';
 const PlansLibraryPage: React.FC = () => {
   const navigate = useNavigate();
   const token = getToken();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const token = getToken();
+      if (!token) { setIsAdmin(false); return; }
+      try {
+        const res = await authFetch(buildApiUrl('/users/me'));
+        if (res.ok) {
+          const me = await res.json();
+          setIsAdmin(me?.role === 'admin');
+        }
+      } catch (e) {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, []);
 
   const [activeTab, setActiveTab] = useState<TabKey>('my');
 
@@ -156,9 +174,9 @@ const PlansLibraryPage: React.FC = () => {
       actions={[
         <Button type="text" icon={<EyeOutlined />} onClick={() => navigate(`/plan/${plan.id}`)}>查看</Button>,
         ...(tab === 'my' ? [
-          <Button type="text" icon={<EditOutlined />} onClick={() => navigate(`/plan?edit=${plan.id}`)}>编辑</Button>,
+          (isAdmin ? <Button type="text" icon={<EditOutlined />} onClick={() => navigate(`/plan/${plan.id}/edit`)}>编辑</Button> : null),
           <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDeletePlan(plan.id)}>删除</Button>
-        ] : [])
+        ].filter(Boolean) as any : [])
       ]}
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>

@@ -18,6 +18,7 @@ import UsersAdminPage from './pages/Admin/UsersAdminPage';
 import HistoryAdminPage from './pages/Admin/HistoryAdminPage';
 import DestinationsPage from './pages/DestinationsPage/DestinationsPage';
 import PlansLibraryPage from './pages/PlansLibraryPage/PlansLibraryPage';
+import PlanEditPage from './pages/PlanEditPage/PlanEditPage';
 
 const App: React.FC = () => {
   return (
@@ -38,6 +39,8 @@ const App: React.FC = () => {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
               <Route path="/admin/history" element={<RequireAdmin><HistoryAdminPage /></RequireAdmin>} />
+              // 新增：管理员编辑路由
+              <Route path="/plan/:id/edit" element={<RequireAdmin><PlanEditPage /></RequireAdmin>} />
             </Routes>
           </Layout>
         </div>
