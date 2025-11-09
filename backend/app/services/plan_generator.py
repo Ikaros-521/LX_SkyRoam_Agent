@@ -4,6 +4,8 @@
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from types import SimpleNamespace
+import copy
 from loguru import logger
 import random
 import json
@@ -14,6 +16,10 @@ from functools import wraps
 from app.tools.openai_client import openai_client
 from app.core.config import settings
 
+try:
+    from dateutil import parser as date_parser
+except ImportError:  # pragma: no cover
+    date_parser = None
 
 def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 60.0):
     """重试装饰器，支持指数退避"""
@@ -58,6 +64,7 @@ class PlanGenerator:
         self.max_plans = 5
         self.min_attractions_per_day = 2
         self.max_attractions_per_day = 4
+        self.max_segment_days = getattr(settings, "PLAN_MAX_SEGMENT_DAYS", 10)
         # 延迟导入避免循环依赖
         self._data_collector = None
     
@@ -68,6 +75,19 @@ class PlanGenerator:
             from app.services.data_collector import DataCollector
             self._data_collector = DataCollector()
         return self._data_collector
+    
+    @staticmethod
+    def _to_datetime(value: Any) -> Optional[datetime]:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                if date_parser:
+                    return date_parser.parse(value)
+                return datetime.fromisoformat(value)
+            except Exception:
+                return None
+        return None
     
     async def generate_plans(
         self, 
@@ -82,6 +102,16 @@ class PlanGenerator:
             preferences = self._normalize_preferences(preferences)
             # logger.warning(f"_normalize_preferences(preferences)={preferences}")
             logger.info("开始生成旅行方案")
+
+            if getattr(plan, "duration_days", 0) > self.max_segment_days:
+                logger.info(
+                    f"旅行天数 {getattr(plan, 'duration_days', None)} 超过最大连续天数 {self.max_segment_days}，尝试分段生成"
+                )
+                segmented_plans = await self._generate_segmented_plans(
+                    processed_data, plan, preferences, raw_data
+                )
+                if segmented_plans is not None:
+                    return segmented_plans
             
             # 检查是否有多个偏好，决定使用拆分策略还是传统策略
             use_split_strategy = self._should_use_split_strategy(preferences)
@@ -119,26 +149,7 @@ class PlanGenerator:
                 logger.warning(f"LLM生成方案失败，使用传统方法: {e}")
             
             # 降级到传统方法
-            plans = []
-            
-            # 生成不同风格的方案
-            plan_types = [
-                "经济实惠型",
-                "舒适享受型", 
-                "文化深度型",
-                "自然风光型",
-                "美食体验型"
-            ]
-            
-            for i, plan_type in enumerate(plan_types[:self.max_plans]):
-                plan_data = await self._generate_single_plan(
-                    processed_data, plan, preferences, plan_type, i, raw_data
-                )
-                if plan_data:
-                    plans.append(plan_data)
-            
-            logger.info(f"生成了 {len(plans)} 个旅行方案")
-            return plans
+            return await self._generate_traditional_plans(processed_data, plan, preferences, raw_data)
             
         except Exception as e:
             logger.error(f"生成旅行方案失败: {e}")
@@ -171,6 +182,187 @@ class PlanGenerator:
         _set_default_list("dietaryRestrictions")
 
         return normalized
+
+    async def _generate_traditional_plans(
+        self,
+        processed_data: Dict[str, Any],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]],
+        raw_data: Optional[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        plans: List[Dict[str, Any]] = []
+        plan_types = [
+            "经济实惠型",
+            "舒适享受型",
+            "文化深度型",
+            "自然风光型",
+            "美食体验型",
+        ]
+        for i, plan_type in enumerate(plan_types[: self.max_plans]):
+            plan_data = await self._generate_single_plan(
+                processed_data, plan, preferences, plan_type, i, raw_data
+            )
+            if plan_data:
+                plans.append(plan_data)
+        logger.info(f"使用传统算法生成了 {len(plans)} 个方案")
+        return plans
+
+    def _split_plan_into_segments(self, plan: Any) -> List[Dict[str, Any]]:
+        segments: List[Dict[str, Any]] = []
+        total_days = max(int(getattr(plan, "duration_days", 0)), 0)
+        start_date = self._to_datetime(getattr(plan, "start_date", None))
+        if total_days <= self.max_segment_days:
+            logger.debug("计划天数未超过阈值，无需分段")
+            return segments
+        if not start_date:
+            logger.warning("计划开始日期无法解析，分段生成被跳过")
+            return segments
+        remaining = total_days
+        offset = 0
+        while remaining > 0:
+            days = min(self.max_segment_days, remaining)
+            seg_start = start_date + timedelta(days=offset)
+            seg_end = seg_start + timedelta(days=days - 1)
+            segments.append(
+                {
+                    "start_date": seg_start,
+                    "end_date": seg_end,
+                    "days": days,
+                    "offset": offset,
+                }
+            )
+            offset += days
+            remaining -= days
+        logger.info(f"根据 {total_days} 天拆分成 {len(segments)} 段")
+        return segments
+
+    def _build_segment_plan(
+        self,
+        plan: Any,
+        segment: Dict[str, Any],
+        preferences: Optional[Dict[str, Any]],
+        segment_budget: Optional[float],
+    ) -> Any:
+        base_attrs = {
+            "id": getattr(plan, "id", None),
+            "title": getattr(plan, "title", None),
+            "description": getattr(plan, "description", None),
+            "departure": getattr(plan, "departure", None),
+            "destination": getattr(plan, "destination", None),
+            "transportation": getattr(plan, "transportation", None),
+            "requirements": getattr(plan, "requirements", None),
+            "num_people": getattr(plan, "num_people", None)
+            or (preferences or {}).get("travelers")
+            or getattr(plan, "travelers", None),
+            "age_group": getattr(plan, "age_group", None),
+            "travelers": getattr(plan, "travelers", None)
+            or (preferences or {}).get("travelers"),
+            "user_id": getattr(plan, "user_id", None),
+            "status": getattr(plan, "status", None),
+            "score": getattr(plan, "score", None),
+            "is_public": getattr(plan, "is_public", None),
+            "public_at": getattr(plan, "public_at", None),
+        }
+        base_attrs.update(
+            {
+                "duration_days": segment["days"],
+                "start_date": segment["start_date"],
+                "end_date": segment["end_date"],
+                "budget": segment_budget,
+            }
+        )
+        return SimpleNamespace(**base_attrs)
+
+    def _clone_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        return copy.deepcopy(plan)
+
+    def _merge_total_cost(self, base: Dict[str, Any], segment: Dict[str, Any]) -> None:
+        base_cost = base.get("total_cost")
+        seg_cost = segment.get("total_cost")
+        if not isinstance(seg_cost, dict):
+            return
+        if not isinstance(base_cost, dict):
+            base_cost = {}
+        for key, value in seg_cost.items():
+            if isinstance(value, (int, float)):
+                base_cost[key] = base_cost.get(key, 0) + value
+            else:
+                base_cost[key] = value
+        base["total_cost"] = base_cost
+
+    def _append_segment_plan(self, base: Dict[str, Any], segment: Dict[str, Any]) -> Dict[str, Any]:
+        base.setdefault("daily_itineraries", [])
+        base["daily_itineraries"].extend(segment.get("daily_itineraries", []))
+        for key in ["restaurants", "hotels", "flights", "transportation", "attractions"]:
+            if segment.get(key):
+                base.setdefault(key, [])
+                base[key].extend(segment.get(key, []))
+        self._merge_total_cost(base, segment)
+        if segment.get("summary"):
+            base["summary"] = (
+                base.get("summary", "") + f"\n{segment.get('summary')}"
+            ).strip()
+        return base
+
+    def _merge_segment_plans(
+        self, existing: List[Dict[str, Any]], segment_plans: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        if not existing:
+            return [self._clone_plan(p) for p in segment_plans]
+        max_len = max(len(existing), len(segment_plans))
+        merged: List[Dict[str, Any]] = []
+        for idx in range(max_len):
+            base_plan = self._clone_plan(existing[idx]) if idx < len(existing) else None
+            seg_plan = segment_plans[idx] if idx < len(segment_plans) else None
+            if base_plan and seg_plan:
+                merged.append(self._append_segment_plan(base_plan, seg_plan))
+            elif base_plan:
+                merged.append(base_plan)
+            elif seg_plan:
+                merged.append(self._clone_plan(seg_plan))
+        return merged
+
+    async def _generate_segmented_plans(
+        self,
+        processed_data: Dict[str, Any],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]],
+        raw_data: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        segments = self._split_plan_into_segments(plan)
+        if not segments:
+            logger.debug("未生成任何分段，回退到单段策略")
+            return None
+
+        per_day_budget = None
+        if getattr(plan, "budget", None):
+            per_day_budget = plan.budget / max(getattr(plan, "duration_days", 1), 1)
+
+        aggregated_plans: List[Dict[str, Any]] = []
+        for segment in segments:
+            segment_budget = per_day_budget * segment["days"] if per_day_budget is not None else None
+            segment_plan = self._build_segment_plan(plan, segment, preferences, segment_budget)
+            segment_plans = await self._generate_traditional_plans(
+                processed_data, segment_plan, preferences, raw_data
+            )
+            if not segment_plans:
+                logger.warning(
+                    f"分段生成失败：段 offset={segment['offset']} 天数={segment['days']}"
+                )
+                continue
+            aggregated_plans = self._merge_segment_plans(aggregated_plans, segment_plans)
+
+        if not aggregated_plans:
+            logger.error("所有分段都生成失败，回退到完整方案生成")
+            return None
+
+        for final_plan in aggregated_plans:
+            final_plan["duration_days"] = getattr(plan, "duration_days", None)
+            final_plan["start_date"] = getattr(plan, "start_date", None)
+            final_plan["end_date"] = getattr(plan, "end_date", None)
+            final_plan["budget"] = getattr(plan, "budget", None)
+        logger.info(f"分段生成完成，共合并 {len(aggregated_plans)} 个方案段落")
+        return aggregated_plans
 
     def _should_use_split_strategy(self, preferences: Optional[Dict[str, Any]]) -> bool:
         """判断是否应该使用拆分策略"""
@@ -1982,121 +2174,158 @@ class PlanGenerator:
         attractions_data: List[Dict[str, Any]],
         plan: Any,
         preferences: Optional[Dict[str, Any]] = None,
-        raw_data: Optional[Dict[str, Any]] = None
+        raw_data: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """生成景点游玩方案"""
+        """按天生成景点游玩方案"""
         try:
-            system_prompt = """你是一个专业的景点规划师，专门为游客规划景点游览行程。
-请根据提供的真实景点数据和小红书用户的实际体验分享，为用户的每一天生成详细的景点游览安排。
+            total_days = max(int(getattr(plan, "duration_days", 0) or len(attractions_data) or 1), 1)
+            per_day_budget = self._get_per_day_budget(plan)
+            day_results: List[Dict[str, Any]] = []
 
-重要指导原则：
-1. 充分利用小红书攻略中的实用建议，如最佳游览时间、推荐路线、避坑指南等
-2. 提取攻略中的具体细节，如"早上8点半开门就进去人少"、"午门进神武门出"等实用信息
-3. 结合攻略中的个人体验，提供更贴近实际的游览建议
-4. 参考攻略中提到的必看亮点、拍照位置、省钱技巧等
-5. 注意攻略中的时间安排建议和注意事项
+            for day in range(1, total_days + 1):
+                day_date = self._calculate_date(getattr(plan, "start_date", ""), day - 1)
+                try:
+                    single_day_plan = await self._generate_single_day_attraction_plan(
+                        day=day,
+                        date_str=day_date,
+                        attractions_data=attractions_data,
+                        plan=plan,
+                        preferences=preferences,
+                        raw_data=raw_data,
+                        per_day_budget=per_day_budget,
+                    )
+                    if single_day_plan:
+                        day_results.append(single_day_plan)
+                        continue
+                except Exception as day_error:  # pragma: no cover
+                    logger.error(f"第 {day} 天景点方案生成异常: {day_error}")
 
-每天的游览安排应该包含：
-1. 基于攻略经验的景点选择和最优游览顺序
-2. 参考真实用户体验的详细时间安排
-3. 攻略中提到的景点亮点和必看内容
-4. 实用的游览技巧和避坑建议
-5. 门票费用和开放时间信息
+                fallback_plan = self._build_simple_attraction_plan(
+                    day=day,
+                    date_str=day_date,
+                    attractions_data=attractions_data,
+                )
+                logger.warning(f"使用简单逻辑生成第 {day} 天景点方案")
+                day_results.append(fallback_plan)
 
-请严格按照以下JSON格式返回：
-[
-  {
-    "day": 1,
-    "date": "日期",
-    "schedule": [
-      {
-        "time": "09:00-12:00",
-        "activity": "景点游览",
-        "location": "具体景点名称",
-        "description": "结合攻略经验的详细游览内容，包含必看亮点和推荐体验",
-        "cost": 门票价格,
-        "tips": "基于真实用户体验的游览建议，包含时间安排、路线选择、避坑指南等实用信息"
-      }
-    ],
-    "attractions": [
-      {
-        "name": "景点名称",
-        "category": "景点类型",
-        "description": "景点描述",
-        "price": 门票价格,
-        "rating": 评分,
-        "visit_time": "建议游览时间",
-        "opening_hours": "开放时间",
-        "best_visit_time": "基于攻略经验的最佳游览时段",
-        "highlights": ["攻略中提到的亮点1", "必看内容2", "特色体验3"],
-        "photography_spots": ["攻略推荐的拍照点1", "网红打卡地2"],
-        "address": "景点地址",
-        "route_tips": "攻略中的路线建议和游览顺序",
-        "experience_tips": ["基于真实体验的实用建议1", "省钱技巧2", "避坑指南3"]
-      }
-    ],
-    "estimated_cost": 当日景点费用,
-    "daily_tips": ["基于攻略的当日游览建议", "真实用户的注意事项", "实用的省钱和避坑小贴士"]
-  }
-]"""
-
-            user_prompt = f"""
-请为以下旅行需求制定景点游览方案：
-
-目的地：{plan.destination}
-旅行天数：{plan.duration_days}天
-预算：{plan.budget}元
-特殊要求：{plan.requirements or '无特殊要求'}
-人数、年龄群体以及用户偏好：{preferences or '无特殊偏好'}
-
-可用景点数据：
-{self._format_data_for_llm(attractions_data, 'attraction')}
-
-小红书真实用户景点体验分享：
-{self._format_xiaohongshu_data_for_prompt(raw_data.get('xiaohongshu_notes', []) if raw_data else [], plan.destination)}
-
-重要要求：
-1. **深度利用小红书攻略**：仔细分析每条攻略中的具体建议，如游览路线、时间安排、必看亮点等
-2. **提取实用细节**：将攻略中的具体操作建议融入到游览安排中，如"早上8点半开门就进去"、"午门进神武门出"等
-3. **结合真实体验**：基于攻略中的个人体验和感受，提供更贴近实际的游览建议
-4. **优化时间安排**：参考攻略中的时间建议，合理安排每个景点的游览时长和最佳时段
-5. **包含避坑指南**：整合攻略中的注意事项和避坑建议，帮助用户避免常见问题
-6. **路线优化**：根据攻略中的路线建议和地理位置，优化景点游览顺序
-7. **必须使用提供的真实景点数据**：确保所有推荐的景点都在提供的数据范围内
-
-请特别注意：
-- 将小红书攻略中的具体建议转化为可操作的游览安排
-- 结合攻略中的个人感受和推荐，提供更有温度的旅行建议
-- 利用攻略中的省钱技巧和实用信息，为用户提供更好的旅行体验
-
-请直接返回JSON格式结果。
-"""
-            # logger.warning(f"User prompt: {user_prompt}")
-
-            response = await openai_client.generate_text(
-                prompt=user_prompt,
-                system_prompt=system_prompt,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
-                temperature=0.7
-            )
-
-            cleaned_response = self._clean_llm_response(response)
-            try:
-                result = json.loads(cleaned_response)
-            except json.JSONDecodeError:
-                logger.warning(f"生成景点方案失败，返回结果格式不正确，原始返回值：{cleaned_response}")
-                return []
-            
-            if not isinstance(result, list):
-                logger.warning("景点方案返回格式不正确")
-                return []
-                
-            logger.info(f"生成景点方案天数: {len(result)}")
-            return result
+            logger.info(f"景点方案按天生成完成，共 {len(day_results)} 天")
+            return day_results
 
         except Exception as e:
             logger.error(f"生成景点方案失败: {e}")
             return []
+
+    async def _generate_single_day_attraction_plan(
+        self,
+        day: int,
+        date_str: str,
+        attractions_data: List[Dict[str, Any]],
+        plan: Any,
+        preferences: Optional[Dict[str, Any]],
+        raw_data: Optional[Dict[str, Any]],
+        per_day_budget: Optional[float],
+    ) -> Optional[Dict[str, Any]]:
+        """调用LLM生成单日景点方案"""
+        system_prompt = """你是一位资深景点规划师，请针对某一天制定详细的景点游览安排。
+需结合提供的真实景点数据与小红书真实体验建议，输出结构化结果。"""
+
+        budget_info = f"{per_day_budget:.0f}元" if isinstance(per_day_budget, (int, float)) else "未指定"
+        user_prompt = f"""
+请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的景点游览方案：
+- 目的地：{plan.destination}
+- 当日预算：{budget_info}
+- 特殊要求：{plan.requirements or '无'}
+- 偏好：{preferences or '无'}
+
+真实景点数据：
+{self._format_data_for_llm(attractions_data, 'attraction')}
+
+小红书体验分享：
+{self._format_xiaohongshu_data_for_prompt(raw_data.get('xiaohongshu_notes', []) if raw_data else [], plan.destination)}
+
+请返回JSON对象，字段与示例一致：{{
+  "day": {day},
+  "date": "{date_str}",
+  "schedule": [...],
+  "attractions": [...],
+  "estimated_cost": 参考费用,
+  "daily_tips": [...]
+}}
+务必使用提供数据中的景点，并给出实用游览建议。"""
+
+        response = await openai_client.generate_text(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            max_tokens=min(settings.OPENAI_MAX_TOKENS, 1200),
+            temperature=0.6,
+        )
+        cleaned_response = self._clean_llm_response(response)
+        try:
+            parsed = json.loads(cleaned_response)
+        except json.JSONDecodeError:
+            logger.warning(f"第 {day} 天景点方案解析JSON失败：{cleaned_response}")
+            return None
+
+        day_plan = None
+        if isinstance(parsed, list) and parsed:
+            day_plan = parsed[0]
+        elif isinstance(parsed, dict):
+            day_plan = parsed
+
+        if not isinstance(day_plan, dict):
+            logger.warning(f"第 {day} 天景点方案格式错误：{cleaned_response}")
+            return None
+
+        day_plan["day"] = day
+        day_plan.setdefault("date", date_str)
+        return day_plan
+
+    def _build_simple_attraction_plan(
+        self,
+        day: int,
+        date_str: str,
+        attractions_data: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """当LLM失效时构造一个简单的景点计划"""
+        selection = []
+        if attractions_data:
+            start = (day - 1) * 2
+            selection = attractions_data[start : start + 2]
+            if not selection:
+                selection = attractions_data[:2]
+        selection = [copy.deepcopy(attr) for attr in selection]
+
+        schedule = []
+        total_cost = 0
+        for idx, attr in enumerate(selection):
+            duration_hours = attr.get("visit_time", "2小时")
+            start_hour = 9 + idx * 3
+            end_hour = start_hour + 3
+            cost = attr.get("price") or 0
+            try:
+                total_cost += float(cost)
+            except (TypeError, ValueError):
+                pass
+            schedule.append(
+                {
+                    "time": f"{str(start_hour).zfill(2)}:00-{str(end_hour).zfill(2)}:00",
+                    "activity": "景点游览",
+                    "location": attr.get("name", "景点"),
+                    "description": attr.get("description", "探索当地特色景点"),
+                    "cost": cost or 0,
+                    "tips": "根据景点建议合理安排行程，提前预约可减少排队时间。",
+                }
+            )
+
+        daily_tips = ["建议根据天气和人流灵活调整行程", "提前确认景点开放时间和购票方式"]
+        return {
+            "day": day,
+            "date": date_str,
+            "schedule": schedule,
+            "attractions": selection,
+            "estimated_cost": total_cost,
+            "daily_tips": daily_tips,
+        }
 
     async def _assemble_travel_plans(
         self,
@@ -2267,6 +2496,21 @@ class PlanGenerator:
             return target_date.strftime("%Y-%m-%d")
         except:
             return start_date
+
+    def _get_per_day_budget(self, plan: Any) -> Optional[float]:
+        """计算日均预算"""
+        total_budget = getattr(plan, "budget", None)
+        total_days = getattr(plan, "duration_days", None)
+        if not total_budget or not total_days:
+            return None
+        try:
+            total_budget = float(total_budget)
+            total_days = int(total_days)
+            if total_days <= 0:
+                return None
+            return max(total_budget / total_days, 0)
+        except (TypeError, ValueError):
+            return None
 
     def _get_day_attractions(self, attraction_plans: List[Dict[str, Any]], day: int) -> Dict[str, Any]:
         """获取指定天数的景点安排"""

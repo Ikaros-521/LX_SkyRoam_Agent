@@ -923,7 +923,19 @@ const TravelPlanPage: React.FC = () => {
                 <Form.Item
                   name="dateRange"
                   label="出行时间"
-                  rules={[{ required: true, message: '请选择出行时间' }]}
+                  rules={[
+                    { required: true, message: '请选择出行时间' },
+                    {
+                      validator: (_, value) => {
+                        if (!value || value.length !== 2) return Promise.resolve();
+                        const days = value[1].diff(value[0], 'day') + 1;
+                        if (days > 10) {
+                          return Promise.reject(new Error('单次旅行时间不能超过 10 天'));
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
                 >
                   <RangePicker 
                     className="mobile-vertical-range"
