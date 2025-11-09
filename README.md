@@ -68,10 +68,10 @@ LX_SkyRoam_Agent/
 ## 快速开始
 
 ### 环境要求
-- Python 3.9+
-- Node.js 16+
-- Redis
-- PostgreSQL
+- [Python 3.10+](https://www.python.org/downloads/)
+- [Node.js 18+](https://nodejs.org/en/download)
+- [Redis](https://redis.io/download)
+- [PostgreSQL](https://www.postgresql.org/download/)
 
 ### 安装步骤
 
