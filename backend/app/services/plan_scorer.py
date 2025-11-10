@@ -2,9 +2,9 @@
 旅行方案评分服务
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Iterable
 from loguru import logger
-import math
+import traceback
 
 
 class PlanScorer:
@@ -66,7 +66,8 @@ class PlanScorer:
     async def _score_price(self, plan: Dict[str, Any], original_plan: Any) -> float:
         """价格评分"""
         try:
-            total_cost = plan.get("total_cost", {}).get("total", 0)
+            total_cost_info = self._as_dict(plan.get("total_cost"))
+            total_cost = total_cost_info.get("total", 0)
             budget = getattr(original_plan, 'budget', None) or 5000  # 默认预算5000元
             
             if total_cost <= 0:
@@ -93,7 +94,7 @@ class PlanScorer:
             ratings = []
             
             # 收集所有评分
-            hotel = plan.get("hotel") or {}
+            hotel = self._as_dict(plan.get("hotel"))
             if hotel.get("rating"):
                 try:
                     rating = float(hotel["rating"])
@@ -101,7 +102,7 @@ class PlanScorer:
                 except (ValueError, TypeError):
                     pass
             
-            flight = plan.get("flight") or {}
+            flight = self._as_dict(plan.get("flight"))
             if flight.get("rating"):
                 try:
                     rating = float(flight["rating"])
@@ -109,8 +110,8 @@ class PlanScorer:
                 except (ValueError, TypeError):
                     pass
             
-            for day in plan.get("daily_itineraries", []):
-                for attraction in day.get("attractions", []):
+            for day in self._iter_dicts(plan.get("daily_itineraries")):
+                for attraction in self._iter_dicts(day.get("attractions")):
                     if attraction.get("rating"):
                         try:
                             rating = float(attraction["rating"])
@@ -118,7 +119,7 @@ class PlanScorer:
                         except (ValueError, TypeError):
                             pass
             
-            for restaurant in plan.get("restaurants", []):
+            for restaurant in self._iter_dicts(plan.get("restaurants")):
                 if restaurant.get("rating"):
                     try:
                         rating = float(restaurant["rating"])
@@ -136,6 +137,7 @@ class PlanScorer:
             return max(0.0, min(1.0, score))
             
         except Exception as e:
+            logger.error(traceback.format_exc())
             logger.error(f"评分评分失败: {e}")
             return 0.5
     
@@ -145,22 +147,22 @@ class PlanScorer:
             convenience_factors = []
             
             # 交通便利性
-            transportation = plan.get("transportation", [])
+            transportation = list(self._iter_dicts(plan.get("transportation")))
             if transportation:
                 convenience_factors.append(0.8)  # 有交通信息
             
             # 酒店位置便利性
-            hotel = plan.get("hotel", {})
-            if hotel.get("address"):
+            hotel = self._as_dict(plan.get("hotel"))
+            address = str(hotel.get("address", "")).lower()
+            if address:
                 # 简单判断：地址包含"市中心"、"商业区"等关键词
-                address = hotel["address"].lower()
                 if any(keyword in address for keyword in ["市中心", "商业区", "地铁", "交通便利"]):
                     convenience_factors.append(0.9)
                 else:
                     convenience_factors.append(0.6)
             
             # 景点分布合理性
-            daily_itineraries = plan.get("daily_itineraries", [])
+            daily_itineraries = list(self._iter_dicts(plan.get("daily_itineraries")))
             if daily_itineraries:
                 # 检查每日景点数量是否合理
                 for day in daily_itineraries:
@@ -185,7 +187,7 @@ class PlanScorer:
             safety_factors = []
             
             # 航班安全性
-            flight = plan.get("flight", {})
+            flight = self._as_dict(plan.get("flight"))
             if flight:
                 airline = flight.get("airline", "").lower()
                 # 知名航空公司安全性更高
@@ -196,7 +198,7 @@ class PlanScorer:
                     safety_factors.append(0.7)
             
             # 酒店安全性
-            hotel = plan.get("hotel", {})
+            hotel = self._as_dict(plan.get("hotel"))
             if hotel:
                 # 星级酒店安全性更高
                 rating = hotel.get("rating", 0)
@@ -208,9 +210,9 @@ class PlanScorer:
                     safety_factors.append(0.5)
             
             # 景点安全性
-            daily_itineraries = plan.get("daily_itineraries", [])
+            daily_itineraries = list(self._iter_dicts(plan.get("daily_itineraries")))
             for day in daily_itineraries:
-                for attraction in day.get("attractions", []):
+                for attraction in self._iter_dicts(day.get("attractions")):
                     # 知名景点安全性更高
                     name = attraction.get("name", "").lower()
                     if any(keyword in name for keyword in ["博物馆", "公园", "广场", "官方"]):
@@ -224,6 +226,7 @@ class PlanScorer:
             return sum(safety_factors) / len(safety_factors)
             
         except Exception as e:
+            logger.error(traceback.format_exc())
             logger.error(f"安全性评分失败: {e}")
             return 0.5
     
@@ -233,9 +236,9 @@ class PlanScorer:
             popularity_factors = []
             
             # 景点受欢迎程度
-            daily_itineraries = plan.get("daily_itineraries", [])
+            daily_itineraries = list(self._iter_dicts(plan.get("daily_itineraries")))
             for day in daily_itineraries:
-                for attraction in day.get("attractions", []):
+                for attraction in self._iter_dicts(day.get("attractions")):
                     rating = attraction.get("rating", 0)
                     review_count = attraction.get("review_count", 0)
                     
@@ -250,7 +253,7 @@ class PlanScorer:
                         popularity_factors.append(0.3)
             
             # 餐厅受欢迎程度
-            for restaurant in plan.get("restaurants", []):
+            for restaurant in self._iter_dicts(plan.get("restaurants")):
                 rating = restaurant.get("rating", 0)
                 if rating >= 4.5:
                     popularity_factors.append(0.8)
@@ -265,6 +268,7 @@ class PlanScorer:
             return sum(popularity_factors) / len(popularity_factors)
             
         except Exception as e:
+            logger.error(traceback.format_exc())
             logger.error(f"受欢迎程度评分失败: {e}")
             return 0.5
     
@@ -318,16 +322,17 @@ class PlanScorer:
             return max(0.0, min(1.0, adjusted_score))
             
         except Exception as e:
+            logger.error(traceback.format_exc())
             logger.error(f"偏好调整失败: {e}")
             return base_score
     
     def _count_culture_activities(self, plan: Dict[str, Any]) -> int:
         """统计文化类活动数量"""
         count = 0
-        daily_itineraries = plan.get("daily_itineraries", [])
+        daily_itineraries = self._iter_dicts(plan.get("daily_itineraries"))
         
         for day in daily_itineraries:
-            for attraction in day.get("attractions", []):
+            for attraction in self._iter_dicts(day.get("attractions")):
                 category = attraction.get("category", "").lower()
                 name = attraction.get("name", "").lower()
                 
@@ -340,14 +345,14 @@ class PlanScorer:
     def _count_food_activities(self, plan: Dict[str, Any]) -> int:
         """统计美食类活动数量"""
         count = 0
-        daily_itineraries = plan.get("daily_itineraries", [])
+        daily_itineraries = list(self._iter_dicts(plan.get("daily_itineraries")))
         
         for day in daily_itineraries:
             # 统计餐厅数量
-            count += len(day.get("restaurants", []))
+            count += len(list(self._iter_dicts(day.get("restaurants"))))
             
             # 统计美食相关景点
-            for attraction in day.get("attractions", []):
+            for attraction in self._iter_dicts(day.get("attractions")):
                 category = attraction.get("category", "").lower()
                 name = attraction.get("name", "").lower()
                 
@@ -360,10 +365,10 @@ class PlanScorer:
     def _count_shopping_activities(self, plan: Dict[str, Any]) -> int:
         """统计购物类活动数量"""
         count = 0
-        daily_itineraries = plan.get("daily_itineraries", [])
+        daily_itineraries = self._iter_dicts(plan.get("daily_itineraries"))
         
         for day in daily_itineraries:
-            for attraction in day.get("attractions", []):
+            for attraction in self._iter_dicts(day.get("attractions")):
                 category = attraction.get("category", "").lower()
                 name = attraction.get("name", "").lower()
                 
@@ -376,10 +381,10 @@ class PlanScorer:
     def _count_nature_activities(self, plan: Dict[str, Any]) -> int:
         """统计自然类活动数量"""
         count = 0
-        daily_itineraries = plan.get("daily_itineraries", [])
+        daily_itineraries = self._iter_dicts(plan.get("daily_itineraries"))
         
         for day in daily_itineraries:
-            for attraction in day.get("attractions", []):
+            for attraction in self._iter_dicts(day.get("attractions")):
                 category = attraction.get("category", "").lower()
                 name = attraction.get("name", "").lower()
                 
@@ -388,3 +393,16 @@ class PlanScorer:
                     count += 1
         
         return count
+
+    def _as_dict(self, value: Any) -> Dict[str, Any]:
+        """Return value if dict else empty dict to avoid attribute errors."""
+        return value if isinstance(value, dict) else {}
+
+    def _iter_dicts(self, value: Any) -> Iterable[Dict[str, Any]]:
+        """Yield dict items from heterogeneous containers."""
+        if isinstance(value, dict):
+            yield value
+        elif isinstance(value, (list, tuple, set)):
+            for item in value:
+                if isinstance(item, dict):
+                    yield item

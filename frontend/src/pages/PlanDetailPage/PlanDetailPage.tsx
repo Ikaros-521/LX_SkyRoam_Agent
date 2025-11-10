@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Card, 
   Button, 
@@ -9,8 +9,8 @@ import {
   Tabs,
   Tag,
   List,
-  Avatar,
   Divider,
+  Timeline,
   Alert,
   Spin,
   Modal,
@@ -47,36 +47,50 @@ const { TabPane } = Tabs;
 
 // 景点接口定义
 interface Attraction {
-  name: string;
-  category: string;
-  description: string;
-  price: number;
-  rating: number;
-  visit_time: string;
-  opening_hours: string;
+  name?: string;
+  category?: string;
+  description?: string;
+  price?: number | string;
+  rating?: number | string;
+  visit_time?: string;
+  opening_hours?: string;
   best_visit_time?: string;
   highlights?: string[];
   photography_spots?: string[];
-  address: string;
+  address?: string;
   route_tips?: string;
   experience_tips?: string[];
+  tips?: string;
+}
+
+interface ScheduleEntry {
+  start_time?: string;
+  end_time?: string;
+  time?: string;
+  activity?: string;
+  location?: string;
+  description?: string;
+  details?: string;
+  cost?: number | string;
+  tips?: string;
 }
 
 // 每日行程接口定义
 interface DailyItinerary {
   day: number;
   date: string;
-  schedule: Array<{
-    time: string;
-    activity: string;
-    location: string;
-    description: string;
-    cost: number;
-    tips: string;
-  }>;
-  attractions: Attraction[];
+  schedule: ScheduleEntry[];
+  attractions: Array<Attraction | string>;
   estimated_cost: number;
   daily_tips?: string[];
+  meals?: any[];
+  transportation?: any;
+  stay?: {
+    name?: string;
+    address?: string;
+    price?: number | string;
+    rating?: number | string;
+  };
 }
 
 interface PlanDetail {
@@ -92,6 +106,705 @@ interface PlanDetail {
   public_at?: string | null;
 }
 
+interface RatingSummary {
+  average: number;
+  count: number;
+}
+
+interface UserRating {
+  score: number | null;
+  comment: string;
+}
+
+const toNumber = (value: any, fallback = 0): number => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const ensureArray = (value: any): any[] => (Array.isArray(value) ? value : []);
+
+const normalizeAttractions = (items: any): Attraction[] =>
+  ensureArray(items).map((item: any, index: number) => {
+    if (!item) return {};
+    if (typeof item === 'string') {
+      return { name: item };
+    }
+    if (typeof item === 'object') {
+      return item as Attraction;
+    }
+    return { name: `景点${index + 1}` };
+  });
+
+const normalizeScheduleEntries = (entries: any): ScheduleEntry[] =>
+  ensureArray(entries).map((entry: any, index: number) => {
+    if (!entry) return { activity: `行程 ${index + 1}` };
+    if (typeof entry === 'string') {
+      return { description: entry };
+    }
+    return entry as ScheduleEntry;
+  });
+
+const normalizeMeals = (meals: any): any[] =>
+  ensureArray(meals).map((meal: any) => {
+    if (!meal) return {};
+    if (typeof meal === 'string') {
+      return { description: meal };
+    }
+    return meal;
+  });
+
+const formatScheduleTime = (entry: ScheduleEntry): string => {
+  if (entry.start_time || entry.end_time) {
+    const start = entry.start_time || '未定';
+    const end = entry.end_time ? ` - ${entry.end_time}` : '';
+    return `${start}${end}`;
+  }
+  if (entry.time) return entry.time;
+  return '时间待定';
+};
+
+const parseTimeToMinutes = (value?: string, fallback = Number.MAX_SAFE_INTEGER): number => {
+  if (!value) return fallback;
+  const lower = value.toLowerCase();
+  const primarySegment = value.includes('-') ? value.split('-')[0] : value;
+  const match = primarySegment.match(/(\d{1,2}):(\d{2})/);
+  if (match) {
+    let hour = parseInt(match[1], 10);
+    const minute = parseInt(match[2], 10);
+    if ((/下午|晚上|傍晚|pm/.test(lower)) && hour < 12) {
+      hour += 12;
+    }
+    if ((/凌晨/.test(lower) || /am/.test(lower)) && hour === 12) {
+      hour = 0;
+    }
+    return hour * 60 + minute;
+  }
+  const digitMatch = primarySegment.match(/(\d{1,2})/);
+  if (digitMatch) {
+    return parseInt(digitMatch[1], 10) * 60;
+  }
+  return fallback;
+};
+
+const formatRestaurantImage = (photos: any): string | undefined => {
+  if (!photos || !Array.isArray(photos) || photos.length === 0) {
+    return undefined;
+  }
+
+  const firstPhoto = photos[0];
+
+  if (typeof firstPhoto === 'object' && firstPhoto.url) {
+    return firstPhoto.url;
+  }
+
+  if (typeof firstPhoto === 'string' && firstPhoto.startsWith('http')) {
+    return firstPhoto;
+  }
+
+  if (typeof firstPhoto === 'string') {
+    return `https://example.com${firstPhoto}`;
+  }
+
+  return undefined;
+};
+
+const formatPrice = (restaurant: any): string => {
+  if (typeof restaurant.price === 'number') {
+    return `约 ¥${restaurant.price}`;
+  }
+  if (restaurant.price_range) {
+    return restaurant.price_range;
+  }
+  if (restaurant.cost) {
+    return `约 ¥${restaurant.cost}`;
+  }
+  return '价格未知';
+};
+
+const formatDistance = (distance: any): string => {
+  if (!distance || distance === '未知') return '';
+
+  if (typeof distance === 'number') {
+    if (distance < 1000) {
+      return `${distance}m`;
+    }
+    return `${(distance / 1000).toFixed(1)}km`;
+  }
+
+  if (typeof distance === 'string') {
+    const numMatch = distance.match(/(\d+\.?\d*)/);
+    if (numMatch) {
+      const num = parseFloat(numMatch[1]);
+      if (distance.includes('km')) {
+        return `${num}km`;
+      }
+      if (distance.includes('m')) {
+        return `${num}m`;
+      }
+      if (num < 1000) {
+        return `${num}m`;
+      }
+      return `${(num / 1000).toFixed(1)}km`;
+    }
+  }
+
+  return String(distance);
+};
+
+const formatTransportation = (transportation: any): React.ReactNode => {
+  if (!transportation) return '暂无';
+
+  if (Array.isArray(transportation)) {
+    return (
+      <Space wrap size="small">
+        {transportation.map((t: any, idx: number) => {
+          if (t == null) return <span key={idx}>-</span>;
+          if (typeof t === 'object') {
+            const type = t.type || '交通';
+            const distance = typeof t.distance === 'number' ? `${t.distance} 公里` : (t.distance || '');
+            const duration = typeof t.duration === 'number' ? `${t.duration} 分钟` : (t.duration || '');
+            const cost = t.cost != null ? `¥${t.cost}` : '';
+            const parts = [type, distance, duration, cost].filter(Boolean).join(' · ');
+            return <span key={idx}>{parts || type}</span>;
+          }
+          return <span key={idx}>{String(t)}</span>;
+        })}
+      </Space>
+    );
+  }
+
+  if (typeof transportation === 'object') {
+    const type = transportation.type || '交通';
+    const distance = typeof transportation.distance === 'number' ? `${transportation.distance} 公里` : (transportation.distance || '');
+    const duration = typeof transportation.duration === 'number' ? `${transportation.duration} 分钟` : (transportation.duration || '');
+    const cost = transportation.cost != null ? `¥${transportation.cost}` : '';
+    const parts = [type, distance, duration, cost].filter(Boolean).join(' · ');
+    return parts || type;
+  }
+
+  return String(transportation);
+};
+
+interface LimitedTagListProps {
+  items: any[];
+  color?: string;
+  max?: number;
+  tagStyle?: React.CSSProperties;
+  renderItem?: (item: any, index: number) => React.ReactNode;
+}
+
+const LimitedTagList: React.FC<LimitedTagListProps> = ({ items, color = 'default', max, tagStyle, renderItem }) => {
+  if (!items || items.length === 0) return null;
+  const data = typeof max === 'number' ? items.slice(0, max) : items;
+  return (
+    <Space wrap size={4}>
+      {data.map((item, index) => (
+        <Tag key={index} color={color} style={{ fontSize: 10, ...tagStyle }}>
+          {renderItem ? renderItem(item, index) : (typeof item === 'string' ? item : item?.name || '推荐项')}
+        </Tag>
+      ))}
+    </Space>
+  );
+};
+
+const ActivityTimelineCard: React.FC<{ entry: ScheduleEntry }> = ({ entry }) => (
+  <Card size="small" bordered={false} style={{ backgroundColor: '#f5f9ff' }}>
+    <Space direction="vertical" size={2} style={{ width: '100%' }}>
+      <Space size={6} wrap align="center">
+        <Tag color="blue" style={{ marginBottom: 0 }}>{formatScheduleTime(entry)}</Tag>
+        {entry.activity && <Text strong>{entry.activity}</Text>}
+      </Space>
+      {entry.location && (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          <EnvironmentOutlined style={{ marginRight: 4 }} /> {entry.location}
+        </Text>
+      )}
+      {(entry.description || entry.details) && (
+        <Text style={{ fontSize: 13 }}>
+          {entry.description || entry.details}
+        </Text>
+      )}
+      {(entry.cost !== undefined && entry.cost !== null) && (
+        <Tag color="gold">预计费用 ¥{toNumber(entry.cost)}</Tag>
+      )}
+      {entry.tips && (
+        <Text type="secondary" style={{ fontSize: 12 }}>{entry.tips}</Text>
+      )}
+    </Space>
+  </Card>
+);
+
+const MealTimelineCard: React.FC<{ meal: any }> = ({ meal }) => (
+  <Card size="small" bordered={false} style={{ backgroundColor: '#fff7e6' }}>
+    <Space direction="vertical" size={2} style={{ width: '100%' }}>
+      <Space size={6} wrap align="center">
+        <Tag color="orange" style={{ marginBottom: 0 }}>{meal.type || '餐饮'}</Tag>
+        <Tag color="geekblue" style={{ marginBottom: 0 }}>{meal.time || '时间待定'}</Tag>
+      </Space>
+      <Text strong>{meal.restaurant_name || meal.name || meal.cuisine || '餐饮安排'}</Text>
+      {meal.address && (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          <EnvironmentOutlined style={{ marginRight: 4 }} /> {meal.address}
+        </Text>
+      )}
+      {meal.description && (
+        <Text style={{ fontSize: 12 }}>{meal.description}</Text>
+      )}
+      <Space size={4} wrap>
+        {meal.cuisine && <Tag color="magenta">{meal.cuisine}</Tag>}
+        {meal.estimated_cost != null && (
+          <Tag color="gold">约 ¥{toNumber(meal.estimated_cost)}</Tag>
+        )}
+      </Space>
+      {meal.recommended_dishes && ensureArray(meal.recommended_dishes).length > 0 && (
+        <LimitedTagList
+          items={ensureArray(meal.recommended_dishes)}
+          color="geekblue"
+          max={3}
+          renderItem={(dish: any) => (typeof dish === 'string' ? dish : (dish?.name || '推荐菜'))}
+        />
+      )}
+      {meal.booking_tips && (
+        <Text type="secondary" style={{ fontSize: 12 }}>{meal.booking_tips}</Text>
+      )}
+    </Space>
+  </Card>
+);
+
+const buildTimelineItems = (scheduleEntries: ScheduleEntry[], meals: any[] = []) => {
+  const combined: Array<{ minutes: number; order: number; type: 'activity' | 'meal'; node: React.ReactNode }> = [];
+  scheduleEntries.forEach((entry, idx) => {
+    const reference = entry.start_time || entry.time?.split('-')[0] || entry.time;
+    combined.push({
+      minutes: parseTimeToMinutes(reference, 60000 + idx),
+      order: idx,
+      type: 'activity',
+      node: <ActivityTimelineCard entry={entry} />,
+    });
+  });
+  meals.forEach((meal, idx) => {
+    combined.push({
+      minutes: parseTimeToMinutes(meal.time, 70000 + idx),
+      order: idx,
+      type: 'meal',
+      node: <MealTimelineCard meal={meal} />,
+    });
+  });
+  combined.sort((a, b) => {
+    if (a.minutes === b.minutes) {
+      return a.order - b.order;
+    }
+    return a.minutes - b.minutes;
+  });
+  return combined.map(item => ({
+    color: item.type === 'meal' ? '#fa8c16' : '#1890ff',
+    dot: item.type === 'meal'
+      ? <ShopOutlined style={{ fontSize: 14 }} />
+      : <ClockCircleOutlined style={{ fontSize: 14 }} />,
+    children: item.node,
+  }));
+};
+
+const AttractionCard: React.FC<{ attraction: Attraction; index: number }> = ({ attraction, index }) => {
+  const ratingValue = toNumber(attraction.rating);
+  const highlights = ensureArray(attraction.highlights);
+  const experienceTips = ensureArray(attraction.experience_tips);
+
+  return (
+    <Card key={index} size="small" style={{ backgroundColor: '#f6ffed' }}>
+      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+        <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Text strong>{attraction.name || `景点${index + 1}`}</Text>
+          <Rate disabled value={ratingValue} style={{ fontSize: 10 }} />
+        </Space>
+        {attraction.description && (
+          <Text style={{ fontSize: 12, color: '#666' }}>{attraction.description}</Text>
+        )}
+        <Space size={4} wrap>
+          {attraction.category && (
+            <Tag color="green" style={{ fontSize: 10 }}>
+              <TagOutlined style={{ fontSize: 8 }} /> {attraction.category}
+            </Tag>
+          )}
+          {(attraction.visit_time || attraction.best_visit_time) && (
+            <Tag color="orange" style={{ fontSize: 10 }}>
+              <ClockCircleOutlined style={{ fontSize: 8 }} /> {attraction.visit_time || attraction.best_visit_time}
+            </Tag>
+          )}
+        </Space>
+        {highlights.length > 0 && (
+          <LimitedTagList items={highlights} color="gold" max={3} />
+        )}
+        {experienceTips.length > 0 && (
+          <LimitedTagList items={experienceTips} color="magenta" max={3} />
+        )}
+      </Space>
+    </Card>
+  );
+};
+
+const AttractionSection: React.FC<{ attractions: Attraction[] }> = ({ attractions }) => (
+  <Card size="small" title="精彩看点" bordered={false}>
+    {attractions.length > 0 ? (
+      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+        {attractions.map((attraction, index) => (
+          <AttractionCard key={index} attraction={attraction} index={index} />
+        ))}
+      </Space>
+    ) : (
+      <Text type="secondary">暂无景点推荐</Text>
+    )}
+  </Card>
+);
+
+const DailyTipsSection: React.FC<{ tips: string[] }> = ({ tips }) => (
+  <Card size="small" title="当日建议" bordered={false}>
+    <LimitedTagList items={tips} color="geekblue" tagStyle={{ fontSize: '10px' }} />
+  </Card>
+);
+
+const TransportationDetails: React.FC<{ transportation: any }> = ({ transportation }) => {
+  if (!transportation) {
+    return <Text type="secondary">暂无交通安排</Text>;
+  }
+
+  if (Array.isArray(transportation)) {
+    return (
+      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+        {transportation.map((route: any, idx: number) => (
+          <Card key={idx} size="small" style={{ borderColor: '#f0f0f0' }}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Text strong>{route?.type || '交通'} {route?.name}</Text>
+              {route?.route && <Text type="secondary" style={{ fontSize: 12 }}>{route.route}</Text>}
+              <Space size={4} wrap>
+                {route?.duration && <Tag color="blue">耗时 {route.duration}{typeof route.duration === 'number' ? ' 分钟' : ''}</Tag>}
+                {route?.distance && <Tag color="green">距离 {route.distance}{typeof route.distance === 'number' ? ' 公里' : ''}</Tag>}
+                {route?.price && <Tag color="gold">费用 ¥{route.price}</Tag>}
+              </Space>
+              {route?.usage_tips && ensureArray(route.usage_tips).length > 0 && (
+                <LimitedTagList items={ensureArray(route.usage_tips)} color="geekblue" />
+              )}
+            </Space>
+          </Card>
+        ))}
+      </Space>
+    );
+  }
+
+  if (typeof transportation === 'object') {
+    const primaryRoutes = ensureArray(transportation.primary_routes);
+    const backupRoutes = ensureArray(transportation.backup_routes);
+    if (primaryRoutes.length || backupRoutes.length) {
+      return (
+        <Space direction="vertical" size="small" style={{ width: '100%' }}>
+          {primaryRoutes.map((route: any, idx: number) => (
+            <Card key={`primary-${idx}`} size="small" style={{ borderColor: '#f0f0f0' }}>
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                <Text strong>{route?.type || '交通'} {route?.name}</Text>
+                {route?.route && <Text type="secondary" style={{ fontSize: 12 }}>{route.route}</Text>}
+                <Space size={4} wrap>
+                  {route?.duration && <Tag color="blue">耗时 {route.duration}{typeof route.duration === 'number' ? ' 分钟' : ''}</Tag>}
+                  {route?.distance && <Tag color="green">距离 {route.distance}{typeof route.distance === 'number' ? ' 公里' : ''}</Tag>}
+                  {route?.price && <Tag color="gold">费用 ¥{route.price}</Tag>}
+                </Space>
+                {route?.usage_tips && ensureArray(route.usage_tips).length > 0 && (
+                  <LimitedTagList items={ensureArray(route.usage_tips)} color="geekblue" />
+                )}
+              </Space>
+            </Card>
+          ))}
+          {backupRoutes.length > 0 && (
+            <Card size="small" style={{ borderColor: '#f5f5f5' }}>
+              <Text strong>备用路线</Text>
+              <div style={{ marginTop: 4 }}>
+                {backupRoutes.map((route: any, idx: number) => (
+                  <Tag key={`backup-${idx}`} style={{ marginBottom: 4 }}>
+                    {route?.type || '路线'} {route?.name}
+                  </Tag>
+                ))}
+              </div>
+            </Card>
+          )}
+          {transportation.daily_transport_cost != null && (
+            <Tag color="purple">当日交通费用 ¥{toNumber(transportation.daily_transport_cost)}</Tag>
+          )}
+          {transportation.tips && ensureArray(transportation.tips).length > 0 && (
+            <LimitedTagList items={ensureArray(transportation.tips)} color="cyan" />
+          )}
+        </Space>
+      );
+    }
+  }
+
+  return <>{formatTransportation(transportation)}</>;
+};
+
+const DailyItineraryCard: React.FC<{ day: DailyItinerary }> = ({ day }) => {
+  const scheduleEntries = normalizeScheduleEntries(day.schedule);
+  const meals = normalizeMeals(day.meals);
+  const attractions = normalizeAttractions(day.attractions);
+  const dailyTips = ensureArray(day.daily_tips);
+  const timelineItems = buildTimelineItems(scheduleEntries);
+
+  return (
+    <Card size="small" style={{ width: '100%' }}>
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Space size={8} align="center" wrap>
+          <Tag color="geekblue">第 {day.day} 天</Tag>
+          <Text type="secondary">{day.date}</Text>
+          <Tag color="orange">预计花费 ¥{toNumber(day.estimated_cost)}</Tag>
+        </Space>
+        <Row gutter={[24, 24]}>
+          <Col xs={24} lg={14}>
+            <Card size="small" title="行程安排" bordered={false} style={{ backgroundColor: '#fafafa' }}>
+              {timelineItems.length > 0 ? (
+                <Timeline mode="left" items={timelineItems} />
+              ) : (
+                <Alert type="info" message="暂无行程安排" showIcon />
+              )}
+            </Card>
+            {meals.length > 0 && (
+              <Card size="small" title="餐饮安排" bordered={false} style={{ marginTop: 16 }}>
+                <List
+                  size="small"
+                  dataSource={meals}
+                  renderItem={(meal: any, idx: number) => (
+                    <List.Item key={idx}>
+                      <MealTimelineCard meal={meal} />
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            )}
+          </Col>
+          <Col xs={24} lg={10}>
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <AttractionSection attractions={attractions} />
+              {day.transportation && (
+                <Card size="small" title="交通" bordered={false}>
+                  <TransportationDetails transportation={day.transportation} />
+                </Card>
+              )}
+              <Card size="small" title="费用与住宿" bordered={false}>
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  <Space align="center">
+                    <DollarOutlined style={{ color: '#52c41a' }} />
+                    <Text>预计花费 ¥{toNumber(day.estimated_cost)}</Text>
+                  </Space>
+                  {day.stay ? (
+                    <Space direction="vertical" size={2}>
+                      <Text strong>{day.stay.name}</Text>
+                      {day.stay.address && (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          <EnvironmentOutlined style={{ marginRight: 4 }} /> {day.stay.address}
+                        </Text>
+                      )}
+                      <Space size={4}>
+                        {day.stay.rating && <Tag color="gold">评分 {day.stay.rating}</Tag>}
+                        {day.stay.price != null && <Tag color="cyan">¥{toNumber(day.stay.price)} /晚</Tag>}
+                      </Space>
+                    </Space>
+                  ) : (
+                    <Text type="secondary">参考主方案住宿</Text>
+                  )}
+                </Space>
+              </Card>
+              {dailyTips.length > 0 && <DailyTipsSection tips={dailyTips} />}
+            </Space>
+          </Col>
+        </Row>
+      </Space>
+    </Card>
+  );
+};
+
+const normalizeMenuHighlights = (menuHighlights: any): any[] => {
+  if (!menuHighlights) return [];
+  return Array.isArray(menuHighlights)
+    ? menuHighlights
+    : Object.values(menuHighlights || {});
+};
+
+const RestaurantDishSection: React.FC<{ restaurant: any }> = ({ restaurant }) => {
+  const signatureDishes = ensureArray(restaurant.signature_dishes);
+  const menuHighlights = normalizeMenuHighlights(restaurant.menu_highlights);
+  const specialties = ensureArray(restaurant.specialties);
+  const recommended = ensureArray(restaurant.recommended_dishes);
+
+  const primary = signatureDishes.length
+    ? signatureDishes
+    : menuHighlights.length
+      ? menuHighlights
+      : specialties.length
+        ? specialties
+        : recommended;
+
+  if (!primary.length) return null;
+
+  const normalized = primary.map((dish: any) => (
+    typeof dish === 'string' ? { name: dish } : dish
+  ));
+
+  return (
+    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+      <Text strong style={{ fontSize: '12px' }}>招牌菜 / 菜品推荐</Text>
+      <LimitedTagList
+        items={primary}
+        color="geekblue"
+        max={5}
+        renderItem={(dish: any) => (typeof dish === 'string' ? dish : (dish?.name || '推荐菜'))}
+      />
+      <Collapse size="small" bordered={false} style={{ background: 'transparent' }}>
+        <Collapse.Panel header="查看菜品详情" key="dishes">
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            {normalized.slice(0, 6).map((dish: any, idx: number) => (
+              <Row key={idx} gutter={8} align="middle">
+                <Col span={12}>
+                  <Space size={4}>
+                    <Tag color="geekblue" style={{ fontSize: '11px' }}>{dish?.name || '推荐菜'}</Tag>
+                    {dish?.price && <Text type="secondary" style={{ fontSize: '11px' }}>{dish.price}</Text>}
+                  </Space>
+                </Col>
+                <Col span={12} style={{ textAlign: 'right' }}>
+                  {dish?.taste && <Text type="secondary" style={{ fontSize: '11px' }}>{dish.taste}</Text>}
+                </Col>
+                {dish?.description && (
+                  <Col span={24}>
+                    <Text style={{ fontSize: '12px', color: '#666' }}>{dish.description}</Text>
+                  </Col>
+                )}
+              </Row>
+            ))}
+          </Space>
+        </Collapse.Panel>
+      </Collapse>
+    </Space>
+  );
+};
+
+const RestaurantCard: React.FC<{ restaurant: any }> = ({ restaurant }) => {
+  const imageUrl = formatRestaurantImage(restaurant.photos);
+  const distanceLabel = restaurant.distance ? formatDistance(restaurant.distance) : '';
+
+  return (
+    <Card 
+      size="small" 
+      style={{ width: '100%' }}
+      bodyStyle={{ padding: '12px' }}
+    >
+      <Row gutter={[12, 8]} align="top">
+        <Col span={6}>
+          {imageUrl ? (
+            <Image
+              width={60}
+              height={60}
+              src={imageUrl}
+              alt={restaurant.name}
+              style={{ borderRadius: '6px', objectFit: 'cover' }}
+              fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0yMCAyMEg0MFY0MEgyMFYyMFoiIGZpbGw9IiNEOUQ5RDkiLz4KPC9zdmc+"
+              preview={{
+                mask: <PictureOutlined style={{ fontSize: '16px' }} />
+              }}
+            />
+          ) : (
+            <div style={{ width: 60, height: 60, backgroundColor: '#f5f5f5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <PictureOutlined style={{ color: '#ccc', fontSize: '20px' }} />
+            </div>
+          )}
+        </Col>
+        <Col span={18}>
+          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+            <Row justify="space-between" align="middle">
+              <Col>
+                <Text strong style={{ fontSize: '14px' }}>
+                  {restaurant.name}
+                </Text>
+              </Col>
+              <Col>
+                <Space size={4}>
+                  <Rate disabled defaultValue={restaurant.rating || 0} style={{ fontSize: '12px' }} />
+                  <Text style={{ fontSize: '12px', color: '#666' }}>
+                    {restaurant.rating ? restaurant.rating.toFixed(1) : 'N/A'}
+                  </Text>
+                </Space>
+              </Col>
+            </Row>
+            <Row justify="space-between" align="middle">
+              <Col>
+                <Space size={4}>
+                  <TagOutlined style={{ fontSize: '12px', color: '#666' }} />
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    {restaurant.cuisine_type || restaurant.category || '餐厅'}
+                  </Text>
+                </Space>
+              </Col>
+              <Col>
+                <Space size={4}>
+                  <DollarOutlined style={{ fontSize: '12px', color: '#52c41a' }} />
+                  <Text style={{ fontSize: '12px', color: '#52c41a' }}>
+                    {formatPrice(restaurant)}
+                  </Text>
+                </Space>
+              </Col>
+            </Row>
+            {restaurant.address && (
+              <Row>
+                <Col span={24}>
+                  <Space size={4} align="start">
+                    <EnvironmentOutlined style={{ fontSize: '12px', color: '#666', marginTop: '2px' }} />
+                    <Text type="secondary" style={{ fontSize: '11px', wordBreak: 'break-all', whiteSpace: 'normal', lineHeight: '1.4' }}>
+                      {restaurant.address}
+                    </Text>
+                  </Space>
+                </Col>
+              </Row>
+            )}
+            <Row justify="space-between" align="middle">
+              {restaurant.phone && (
+                <Col>
+                  <Space size={4}>
+                    <PhoneOutlined style={{ fontSize: '12px', color: '#1890ff' }} />
+                    <Text style={{ fontSize: '11px', color: '#1890ff' }}>
+                      {restaurant.phone}
+                    </Text>
+                  </Space>
+                </Col>
+              )}
+              {distanceLabel && (
+                <Col>
+                  <Text type="secondary" style={{ fontSize: '11px' }}>
+                    距离: {distanceLabel}
+                  </Text>
+                </Col>
+              )}
+            </Row>
+            {(restaurant.business_area || restaurant.tags) && (
+              <Row>
+                <Col span={24}>
+                  <Space size={4} wrap>
+                    {restaurant.business_area && (
+                      <Tag color="blue" style={{ fontSize: '11px' }}>
+                        {restaurant.business_area}
+                      </Tag>
+                    )}
+                    {restaurant.tags && restaurant.tags.slice(0, 2).map((tag: string, index: number) => (
+                      <Tag key={index} color="default" style={{ fontSize: '11px' }}>
+                        {tag}
+                      </Tag>
+                    ))}
+                  </Space>
+                </Col>
+              </Row>
+            )}
+            <RestaurantDishSection restaurant={restaurant} />
+          </Space>
+        </Col>
+      </Row>
+    </Card>
+  );
+};
+
 const PlanDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -102,52 +815,15 @@ const PlanDetailPage: React.FC = () => {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [showAllHotels, setShowAllHotels] = useState(false);
   // 新增：评分相关状态
-  const [ratingSummary, setRatingSummary] = useState<{ average: number; count: number } | null>(null);
-  const [myRating, setMyRating] = useState<{ score: number | null; comment: string }>({ score: null, comment: '' });
+  const [ratingSummary, setRatingSummary] = useState<RatingSummary | null>(null);
+  const [myRating, setMyRating] = useState<UserRating>({ score: null, comment: '' });
   const [recentRatings, setRecentRatings] = useState<any[]>([]);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [isPublicView, setIsPublicView] = useState<boolean>(!getToken());
   const [publishing, setPublishing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    const checkAdmin = async () => {
-      const token = getToken();
-      if (!token) { setIsAdmin(false); return; }
-      try {
-        const res = await authFetch(buildApiUrl('/users/me'));
-        if (res.ok) {
-          const me = await res.json();
-          setIsAdmin(me?.role === 'admin');
-        }
-      } catch (e) {
-        setIsAdmin(false);
-      }
-    };
-    checkAdmin();
-  }, []);
-
-  useEffect(() => {
-    fetchPlanDetail();
-  }, [id]);
-
-  // 新增：当计划详情加载完成后获取评分信息（公开视图不请求）
-  useEffect(() => {
-    if (!id) return;
-    if (isPublicView) return;
-    const planId = Number(id);
-    const run = async () => {
-      await Promise.all([
-        fetchRatingSummary(planId),
-        fetchMyRating(planId),
-        fetchRecentRatings(planId)
-      ]);
-    };
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planDetail?.id, isPublicView]);
-
-  const fetchPlanDetail = async () => {
+  const fetchPlanDetail = useCallback(async () => {
     try {
       if (!id) throw new Error('缺少计划ID');
       const planId = Number(id);
@@ -186,7 +862,44 @@ const PlanDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const token = getToken();
+      if (!token) { setIsAdmin(false); return; }
+      try {
+        const res = await authFetch(buildApiUrl('/users/me'));
+        if (res.ok) {
+          const me = await res.json();
+          setIsAdmin(me?.role === 'admin');
+        }
+      } catch (e) {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, []);
+
+  useEffect(() => {
+    fetchPlanDetail();
+  }, [fetchPlanDetail]);
+
+  // 新增：当计划详情加载完成后获取评分信息（公开视图不请求）
+  useEffect(() => {
+    if (!id) return;
+    if (isPublicView) return;
+    const planId = Number(id);
+    const run = async () => {
+      await Promise.all([
+        fetchRatingSummary(planId),
+        fetchMyRating(planId),
+        fetchRecentRatings(planId)
+      ]);
+    };
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planDetail?.id, isPublicView]);
 
   // =============== 评分相关函数 ===============
   const fetchRatingSummary = async (planId: number) => {
@@ -288,24 +1001,6 @@ const PlanDetailPage: React.FC = () => {
     }
   };
 
-  const handleExport = async (format: string) => {
-    if (isPublicView) {
-      message.info('公开视图不可导出');
-      setExportModalVisible(false);
-      return;
-    }
-    try {
-      const response = await authFetch(buildApiUrl(`/travel-plans/${id}/export?format=${format}`));
-      if (response.ok) {
-        // 处理导出逻辑
-        console.log(`导出为 ${format} 格式`);
-      }
-    } catch (error) {
-      console.error('导出失败:', error);
-    }
-    setExportModalVisible(false);
-  };
-
   // 新增：发布/取消发布切换
   const togglePublish = async () => {
     if (!id || !planDetail) return;
@@ -353,116 +1048,6 @@ const PlanDetailPage: React.FC = () => {
   }
 
   const currentPlan = planDetail.generated_plans?.[selectedPlanIndex];
-
-  // 格式化餐厅图片URL
-  const formatRestaurantImage = (photos: any): string | undefined => {
-    if (!photos || !Array.isArray(photos) || photos.length === 0) {
-      return undefined;
-    }
-    
-    const firstPhoto = photos[0];
-    
-    // 如果是对象，提取url属性
-    if (typeof firstPhoto === 'object' && firstPhoto.url) {
-      return firstPhoto.url;
-    }
-    
-    // 如果是字符串且是完整的URL，直接返回
-    if (typeof firstPhoto === 'string' && firstPhoto.startsWith('http')) {
-      return firstPhoto;
-    }
-    
-    // 如果是字符串但是相对路径，添加基础URL
-    if (typeof firstPhoto === 'string') {
-      return `https://example.com${firstPhoto}`;
-    }
-    
-    return undefined;
-  };
-
-  // 格式化价格信息
-  const formatPrice = (restaurant: any): string => {
-    if (typeof restaurant.price === 'number') {
-      return `约 ¥${restaurant.price}`;
-    }
-    if (restaurant.price_range) {
-      return restaurant.price_range;
-    }
-    if (restaurant.cost) {
-      return `约 ¥${restaurant.cost}`;
-    }
-    return '价格未知';
-  };
-
-  // 格式化距离信息
-  const formatDistance = (distance: any): string => {
-    if (!distance || distance === '未知') return '';
-    
-    if (typeof distance === 'number') {
-      if (distance < 1000) {
-        return `${distance}m`;
-      } else {
-        return `${(distance / 1000).toFixed(1)}km`;
-      }
-    }
-    
-    if (typeof distance === 'string') {
-      // 处理字符串格式的距离，如 "1200" 或 "1.2km"
-      const numMatch = distance.match(/(\d+\.?\d*)/);
-      if (numMatch) {
-        const num = parseFloat(numMatch[1]);
-        if (distance.includes('km')) {
-          return `${num}km`;
-        } else if (distance.includes('m')) {
-          return `${num}m`;
-        } else {
-          // 假设是米
-          if (num < 1000) {
-            return `${num}m`;
-          } else {
-            return `${(num / 1000).toFixed(1)}km`;
-          }
-        }
-      }
-    }
-    
-    return String(distance);
-  };
-
-  // 安全格式化展示交通信息，避免将对象直接作为 React 子节点
-  const formatTransportation = (transportation: any): React.ReactNode => {
-    if (!transportation) return '暂无';
-
-    if (Array.isArray(transportation)) {
-      return (
-        <Space wrap size="small">
-          {transportation.map((t: any, idx: number) => {
-            if (t == null) return <span key={idx}>-</span>;
-            if (typeof t === 'object') {
-              const type = t.type || '交通';
-              const distance = typeof t.distance === 'number' ? `${t.distance} 公里` : (t.distance || '');
-              const duration = typeof t.duration === 'number' ? `${t.duration} 分钟` : (t.duration || '');
-              const cost = t.cost != null ? `¥${t.cost}` : '';
-              const parts = [type, distance, duration, cost].filter(Boolean).join(' · ');
-              return <span key={idx}>{parts || type}</span>;
-            }
-            return <span key={idx}>{String(t)}</span>;
-          })}
-        </Space>
-      );
-    }
-
-    if (typeof transportation === 'object') {
-      const type = transportation.type || '交通';
-      const distance = typeof transportation.distance === 'number' ? `${transportation.distance} 公里` : (transportation.distance || '');
-      const duration = typeof transportation.duration === 'number' ? `${transportation.duration} 分钟` : (transportation.duration || '');
-      const cost = transportation.cost != null ? `¥${transportation.cost}` : '';
-      const parts = [type, distance, duration, cost].filter(Boolean).join(' · ');
-      return parts || type;
-    }
-
-    return String(transportation);
-  };
 
   return (
     <div className="plan-detail-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -576,220 +1161,15 @@ const PlanDetailPage: React.FC = () => {
                 <Card title="行程安排">
                   <Tabs size="small" defaultActiveKey="itinerary">
                     <TabPane tab="每日行程" key="itinerary">
+
                       <List
                         dataSource={currentPlan.daily_itineraries}
-                        renderItem={(day: any, index: number) => (
+                        renderItem={(day: DailyItinerary) => (
                           <List.Item>
-                            <Card size="small" style={{ width: '100%' }}>
-                              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                <Title level={4}>第 {day.day} 天 - {day.date}</Title>
-                                <div style={{ marginTop: '8px' }}>
-                                  {day.attractions && day.attractions.length > 0 ? (
-                                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                      {day.attractions.map((attraction: any, attractionIndex: number) => (
-                                        <Card key={attractionIndex} size="small" style={{ backgroundColor: '#f6ffed' }}>
-                                          <Row gutter={[8, 4]} align="middle">
-                                            <Col span={24}>
-                                              <Space align="start" style={{ width: '100%' }}>
-                                                <Avatar size="small" icon={<EnvironmentOutlined />} style={{ backgroundColor: '#52c41a' }} />
-                                                <div style={{ flex: 1 }}>
-                                                  <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                                                    <Row justify="space-between" align="middle">
-                                                      <Col>
-                                                        <Text strong style={{ fontSize: '12px' }}>{attraction.name}</Text>
-                                                      </Col>
-                                                      <Col>
-                                                        <Rate disabled defaultValue={parseFloat(attraction.rating) || 0} style={{ fontSize: '10px' }} />
-                                                      </Col>
-                                                    </Row>
-                                                    <Row gutter={[8, 4]} align="middle">
-                                                      {attraction.category && (
-                                                        <Col>
-                                                          <Tag color="green" style={{ fontSize: '10px', margin: '0 2px 2px 0', padding: '2px 6px', lineHeight: '16px' }}>
-                                                            <TagOutlined style={{ fontSize: '8px' }} /> {attraction.category}
-                                                          </Tag>
-                                                        </Col>
-                                                      )}
-                                                      {(attraction.price !== undefined && attraction.price !== null) && (
-                                                        <Col>
-                                                          <Tag color="blue" style={{ fontSize: '10px', margin: '0 2px 2px 0', padding: '2px 6px', lineHeight: '16px' }}>
-                                                            <DollarOutlined style={{ fontSize: '8px' }} /> {attraction.price}
-                                                          </Tag>
-                                                        </Col>
-                                                      )}
-                                                      {attraction.visit_time && (
-                                                        <Col>
-                                                          <Tag color="orange" style={{ fontSize: '10px', margin: '0 2px 2px 0', padding: '2px 6px', lineHeight: '16px' }}>
-                                                            <ClockCircleOutlined style={{ fontSize: '8px' }} /> {attraction.visit_time}
-                                                          </Tag>
-                                                        </Col>
-                                                      )}
-                                                    </Row>
-                                                    {attraction.description && (
-                                                      <Text style={{ fontSize: '10px', color: '#666', display: 'block' }}>
-                                                        {attraction.description}
-                                                      </Text>
-                                                    )}
-                                                    {attraction.highlights && attraction.highlights.length > 0 && (
-                                                      <div style={{ marginTop: '4px' }}>
-                                                        <Text style={{ fontSize: '9px', color: '#1890ff', fontWeight: 'bold' }}>
-                                                          <StarOutlined style={{ fontSize: '8px', marginRight: '2px' }} />
-                                                          亮点：
-                                                        </Text>
-                                                        <div style={{ marginTop: '2px' }}>
-                                                          {attraction.highlights.slice(0, 3).map((highlight: string, highlightIndex: number) => (
-                                                            <Tag
-                                                              key={highlightIndex}
-                                                              color="gold"
-                                                              style={{ fontSize: '9px', margin: '1px 2px', padding: '1px 4px', lineHeight: '14px' }}
-                                                            >
-                                                              {highlight}
-                                                            </Tag>
-                                                          ))}
-                                                        </div>
-                                                      </div>
-                                                    )}
-                                                    {attraction.photography_spots && attraction.photography_spots.length > 0 && (
-                                                      <div style={{ marginTop: '4px' }}>
-                                                        <Text style={{ fontSize: '9px', color: '#722ed1', fontWeight: 'bold' }}>
-                                                          <PictureOutlined style={{ fontSize: '8px', marginRight: '2px' }} />
-                                                          拍照点：
-                                                        </Text>
-                                                        <div style={{ marginTop: '2px' }}>
-                                                          {attraction.photography_spots.slice(0, 2).map((spot: string, spotIndex: number) => (
-                                                            <Tag
-                                                              key={spotIndex}
-                                                              color="purple"
-                                                              style={{ fontSize: '9px', margin: '1px 2px', padding: '1px 4px', lineHeight: '14px' }}
-                                                            >
-                                                              {spot}
-                                                            </Tag>
-                                                          ))}
-                                                        </div>
-                                                      </div>
-                                                    )}
-                                                    <Row gutter={[8, 2]} style={{ marginTop: '4px' }}>
-                                                      {attraction.opening_hours && (
-                                                        <Col span={12}>
-                                                          <Text style={{ fontSize: '9px', color: '#52c41a' }}>
-                                                            <ClockCircleOutlined style={{ fontSize: '8px' }} /> {attraction.opening_hours}
-                                                          </Text>
-                                                        </Col>
-                                                      )}
-                                                      {attraction.best_visit_time && (
-                                                        <Col span={12}>
-                                                          <Text style={{ fontSize: '9px', color: '#fa8c16' }}>
-                                                            <StarOutlined style={{ fontSize: '8px' }} /> {attraction.best_visit_time}
-                                                          </Text>
-                                                        </Col>
-                                                      )}
-                                                    </Row>
-                                                    {attraction.address && (
-                                                      <Text style={{ fontSize: '9px', color: '#8c8c8c', display: 'block', marginTop: '2px' }}>
-                                                        <EnvironmentOutlined style={{ fontSize: '8px' }} /> {attraction.address}
-                                                      </Text>
-                                                    )}
-                                                    {attraction.tips && (
-                                                      <div style={{ 
-                                                        marginTop: '4px', 
-                                                        padding: '4px 6px', 
-                                                        backgroundColor: '#e6f7ff', 
-                                                        borderRadius: '4px',
-                                                        border: '1px solid #91d5ff'
-                                                      }}>
-                                                        <Text style={{ fontSize: '9px', color: '#0958d9' }}>
-                                                          <ThunderboltOutlined style={{ marginRight: '2px' }} />
-                                                          游览建议：{attraction.tips}
-                                                        </Text>
-                                                      </div>
-                                                    )}
-                                                    {attraction.route_tips && (
-                                                      <div style={{
-                                                        marginTop: '4px',
-                                                        padding: '4px 6px',
-                                                        backgroundColor: '#f0f5ff',
-                                                        borderRadius: '4px',
-                                                        border: '1px solid #adc6ff'
-                                                      }}>
-                                                        <Text style={{ fontSize: '9px', color: '#1d39c4' }}>
-                                                          <EnvironmentOutlined style={{ marginRight: '2px' }} />
-                                                          路线建议：{attraction.route_tips}
-                                                        </Text>
-                                                      </div>
-                                                    )}
-                                                    {attraction.experience_tips && attraction.experience_tips.length > 0 && (
-                                                      <div style={{
-                                                        marginTop: '4px',
-                                                        padding: '4px 6px',
-                                                        backgroundColor: '#fff0f6',
-                                                        borderRadius: '4px',
-                                                        border: '1px solid #ffadd2'
-                                                      }}>
-                                                        <Text style={{ fontSize: '9px', color: '#c41d7f' }}>
-                                                          <StarOutlined style={{ marginRight: '2px' }} />
-                                                          体验建议：
-                                                        </Text>
-                                                        <div style={{ marginTop: '2px' }}>
-                                                          {attraction.experience_tips.slice(0, 4).map((tip: string, tipIndex: number) => (
-                                                            <Tag
-                                                              key={tipIndex}
-                                                              color="magenta"
-                                                              style={{ fontSize: '9px', margin: '1px 2px', padding: '1px 4px', lineHeight: '14px' }}
-                                                            >
-                                                              {tip}
-                                                            </Tag>
-                                                          ))}
-                                                        </div>
-                                                      </div>
-                                                    )}
-                                                  </Space>
-                                                </div>
-                                              </Space>
-                                            </Col>
-                                          </Row>
-                                        </Card>
-                                      ))}
-                                    </Space>
-                                  ) : (
-                                    <Text type="secondary">暂无景点推荐</Text>
-                                  )}
-                                </div>
-                                <Divider />
-                                <Row gutter={16}>
-                                  <Col span={12}>
-                                    <Text type="secondary">交通</Text>
-                                    <br />
-                                    <Text>{formatTransportation(day.transportation)}</Text>
-                                  </Col>
-                                  <Col span={12}>
-                                    <Text type="secondary">预计费用</Text>
-                                    <br />
-                                    <Text>¥{day.estimated_cost}</Text>
-                                  </Col>
-                                </Row>
-                                <Divider />
-                                {day.daily_tips && day.daily_tips.length > 0 && (
-                                  <div style={{ marginTop: '4px' }}>
-                                    <Text strong style={{ color: '#1890ff' }}>
-                                      当日建议
-                                    </Text>
-                                    <div style={{ marginTop: '4px' }}>
-                                      {day.daily_tips.map((tip: string, tipIndex: number) => (
-                                        <Tag
-                                          key={tipIndex}
-                                          color="geekblue"
-                                          style={{ fontSize: '10px', margin: '2px', padding: '2px 6px', lineHeight: '16px' }}
-                                        >
-                                          {tip}
-                                        </Tag>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </Space>
-                            </Card>
+                            <DailyItineraryCard day={day} />
                           </List.Item>
                         )}
+
                       />
                     </TabPane>
                     <TabPane tab="餐厅" key="restaurants">
@@ -799,216 +1179,7 @@ const PlanDetailPage: React.FC = () => {
                           dataSource={currentPlan.restaurants}
                           renderItem={(restaurant: any) => (
                             <List.Item style={{ padding: '12px 0' }}>
-                              <Card 
-                                size="small" 
-                                style={{ width: '100%' }}
-                                bodyStyle={{ padding: '12px' }}
-                              >
-                                <Row gutter={[12, 8]} align="top">
-                                  <Col span={6}>
-                                    {formatRestaurantImage(restaurant.photos) ? (
-                                      <Image
-                                        width={60}
-                                        height={60}
-                                        src={formatRestaurantImage(restaurant.photos)}
-                                        alt={restaurant.name}
-                                        style={{ borderRadius: '6px', objectFit: 'cover' }}
-                                        fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0yMCAyMEg0MFY0MEgyMFYyMFoiIGZpbGw9IiNEOUQ5RDkiLz4KPC9zdmc+"
-                                        preview={{
-                                          mask: <PictureOutlined style={{ fontSize: '16px' }} />
-                                        }}
-                                      />
-                                    ) : (
-                                      <div style={{ width: 60, height: 60, backgroundColor: '#f5f5f5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <PictureOutlined style={{ color: '#ccc', fontSize: '20px' }} />
-                                      </div>
-                                    )}
-                                  </Col>
-                                  <Col span={18}>
-                                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                      <Row justify="space-between" align="middle">
-                                        <Col>
-                                          <Text strong style={{ fontSize: '14px' }}>
-                                            {restaurant.name}
-                                          </Text>
-                                        </Col>
-                                        <Col>
-                                          <Space size={4}>
-                                            <Rate disabled defaultValue={restaurant.rating || 0} style={{ fontSize: '12px' }} />
-                                            <Text style={{ fontSize: '12px', color: '#666' }}>
-                                              {restaurant.rating ? restaurant.rating.toFixed(1) : 'N/A'}
-                                            </Text>
-                                          </Space>
-                                        </Col>
-                                      </Row>
-                                      <Row justify="space-between" align="middle">
-                                        <Col>
-                                          <Space size={4}>
-                                            <TagOutlined style={{ fontSize: '12px', color: '#666' }} />
-                                            <Text type="secondary" style={{ fontSize: '12px' }}>
-                                              {restaurant.cuisine_type || restaurant.category || '餐厅'}
-                                            </Text>
-                                          </Space>
-                                        </Col>
-                                        <Col>
-                                          <Space size={4}>
-                                            <DollarOutlined style={{ fontSize: '12px', color: '#52c41a' }} />
-                                            <Text style={{ fontSize: '12px', color: '#52c41a' }}>
-                                              {formatPrice(restaurant)}
-                                            </Text>
-                                          </Space>
-                                        </Col>
-                                      </Row>
-                                      {restaurant.address && (
-                                        <Row>
-                                          <Col span={24}>
-                                            <Space size={4} align="start">
-                                              <EnvironmentOutlined style={{ fontSize: '12px', color: '#666', marginTop: '2px' }} />
-                                              <Text type="secondary" style={{ fontSize: '11px', wordBreak: 'break-all', whiteSpace: 'normal', lineHeight: '1.4' }}>
-                                                {restaurant.address}
-                                              </Text>
-                                            </Space>
-                                          </Col>
-                                        </Row>
-                                      )}
-                                      <Row justify="space-between" align="middle">
-                                        {restaurant.phone && (
-                                          <Col>
-                                            <Space size={4}>
-                                              <PhoneOutlined style={{ fontSize: '12px', color: '#1890ff' }} />
-                                              <Text style={{ fontSize: '11px', color: '#1890ff' }}>
-                                                {restaurant.phone}
-                                              </Text>
-                                            </Space>
-                                          </Col>
-                                        )}
-                                        {restaurant.distance && (
-                                          <Col>
-                                            <Text type="secondary" style={{ fontSize: '11px' }}>
-                                              距离: {formatDistance(restaurant.distance)}
-                                            </Text>
-                                          </Col>
-                                        )}
-                                      </Row>
-                                      {(restaurant.business_area || restaurant.tags) && (
-                                        <Row>
-                                          <Col span={24}>
-                                            <Space size={4} wrap>
-                                              {restaurant.business_area && (
-                                                <Tag color="blue" style={{ fontSize: '11px' }}>
-                                                  {restaurant.business_area}
-                                                </Tag>
-                                              )}
-                                              {restaurant.tags && restaurant.tags.slice(0, 2).map((tag: string, index: number) => (
-                                                <Tag key={index} color="default" style={{ fontSize: '11px' }}>
-                                                  {tag}
-                                                </Tag>
-                                              ))}
-                                            </Space>
-                                          </Col>
-                                        </Row>
-                                      )}
-
-                                      {/* 招牌菜 / 菜品推荐 */}
-                                      {(
-                                        (restaurant.signature_dishes && restaurant.signature_dishes.length > 0) ||
-                                        (restaurant.menu_highlights && (Array.isArray(restaurant.menu_highlights) ? restaurant.menu_highlights.length > 0 : Object.keys(restaurant.menu_highlights || {}).length > 0)) ||
-                                        (restaurant.specialties && restaurant.specialties.length > 0) ||
-                                        (restaurant.recommended_dishes && restaurant.recommended_dishes.length > 0)
-                                      ) && (
-                                        <Row>
-                                          <Col span={24}>
-                                            <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                              <Text strong style={{ fontSize: '12px' }}>招牌菜 / 菜品推荐</Text>
-
-                                              {/* 优先显示 signature_dishes 对象数组 */}
-                                              {restaurant.signature_dishes && restaurant.signature_dishes.length > 0 && (
-                                                <Space wrap size={4}>
-                                                  {restaurant.signature_dishes.slice(0, 5).map((dish: any, idx: number) => (
-                                                    <Tag key={idx} color="geekblue" style={{ fontSize: '11px' }}>
-                                                      {typeof dish === 'string' ? dish : (dish?.name || '推荐菜')}
-                                                    </Tag>
-                                                  ))}
-                                                </Space>
-                                              )}
-
-                                              {/* 其次显示 menu_highlights（数组或对象） */}
-                                              {!restaurant.signature_dishes && restaurant.menu_highlights && (
-                                                <Space wrap size={4}>
-                                                  {(Array.isArray(restaurant.menu_highlights) 
-                                                    ? restaurant.menu_highlights 
-                                                    : Object.values(restaurant.menu_highlights || {})).slice(0, 5).map((dish: any, idx: number) => (
-                                                      <Tag key={idx} color="geekblue" style={{ fontSize: '11px' }}>
-                                                        {typeof dish === 'string' ? dish : (dish?.name || '推荐菜')}
-                                                      </Tag>
-                                                  ))}
-                                                </Space>
-                                              )}
-
-                                              {/* 再次显示 specialties（字符串数组） */}
-                                              {!restaurant.signature_dishes && !restaurant.menu_highlights && restaurant.specialties && (
-                                                <Space wrap size={4}>
-                                                  {restaurant.specialties.slice(0, 5).map((dish: string, idx: number) => (
-                                                    <Tag key={idx} color="geekblue" style={{ fontSize: '11px' }}>
-                                                      {dish}
-                                                    </Tag>
-                                                  ))}
-                                                </Space>
-                                              )}
-
-                                              {/* 兜底显示 recommended_dishes（对象或字符串） */}
-                                              {!restaurant.signature_dishes && !restaurant.menu_highlights && !restaurant.specialties && restaurant.recommended_dishes && (
-                                                <Space wrap size={4}>
-                                                  {restaurant.recommended_dishes.slice(0, 5).map((dish: any, idx: number) => (
-                                                    <Tag key={idx} color="geekblue" style={{ fontSize: '11px' }}>
-                                                      {typeof dish === 'string' ? dish : (dish?.name || '推荐菜')}
-                                                    </Tag>
-                                                  ))}
-                                                </Space>
-                                              )}
-                                              {(() => {
-                                                const raw = (restaurant.signature_dishes && restaurant.signature_dishes.length > 0)
-                                                  ? restaurant.signature_dishes
-                                                  : (restaurant.menu_highlights
-                                                    ? (Array.isArray(restaurant.menu_highlights) ? restaurant.menu_highlights : Object.values(restaurant.menu_highlights || {}))
-                                                    : (restaurant.recommended_dishes || []));
-                                                const dishes = (raw || []).map((d: any) => typeof d === 'string' ? ({ name: d }) : d);
-                                                if (!dishes || dishes.length === 0) return null;
-                                                return (
-                                                  <Collapse size="small" bordered={false} style={{ background: 'transparent' }}>
-                                                    <Collapse.Panel header="查看菜品详情" key="dishes">
-                                                      <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                                                        {dishes.slice(0, 6).map((dish: any, idx: number) => (
-                                                          <Row key={idx} gutter={8} align="middle">
-                                                            <Col span={12}>
-                                                              <Space size={4}>
-                                                                <Tag color="geekblue" style={{ fontSize: '11px' }}>{dish?.name || '推荐菜'}</Tag>
-                                                                {dish?.price && <Text type="secondary" style={{ fontSize: '11px' }}>{dish.price}</Text>}
-                                                              </Space>
-                                                            </Col>
-                                                            <Col span={12} style={{ textAlign: 'right' }}>
-                                                              {dish?.taste && <Text type="secondary" style={{ fontSize: '11px' }}>{dish.taste}</Text>}
-                                                            </Col>
-                                                            {dish?.description && (
-                                                              <Col span={24}>
-                                                                <Text style={{ fontSize: '12px', color: '#666' }}>{dish.description}</Text>
-                                                              </Col>
-                                                            )}
-                                                          </Row>
-                                                        ))}
-                                                      </Space>
-                                                    </Collapse.Panel>
-                                                  </Collapse>
-                                                );
-                                              })()}
-                                            </Space>
-                                          </Col>
-                                        </Row>
-                                      )}
-                                    </Space>
-                                  </Col>
-                                </Row>
-                              </Card>
+                              <RestaurantCard restaurant={restaurant} />
                             </List.Item>
                           )}
                         />
@@ -1556,155 +1727,10 @@ const PlanDetailPage: React.FC = () => {
                       dataSource={currentPlan.restaurants}
                       renderItem={(restaurant: any) => (
                         <List.Item style={{ padding: '12px 0' }}>
-                          <Card 
-                            size="small" 
-                            style={{ width: '100%' }}
-                            bodyStyle={{ padding: '12px' }}
-                          >
-                            <Row gutter={[12, 8]} align="top">
-                              {/* 餐厅图片 */}
-                               <Col span={6}>
-                                 {formatRestaurantImage(restaurant.photos) ? (
-                                   <Image
-                                     width={60}
-                                     height={60}
-                                     src={formatRestaurantImage(restaurant.photos)}
-                                     alt={restaurant.name}
-                                     style={{ borderRadius: '6px', objectFit: 'cover' }}
-                                     fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0yMCAyMEg0MFY0MEgyMFYyMFoiIGZpbGw9IiNEOUQ5RDkiLz4KPC9zdmc+"
-                                     preview={{
-                                       mask: <PictureOutlined style={{ fontSize: '16px' }} />
-                                     }}
-                                   />
-                                 ) : (
-                                   <div 
-                                     style={{ 
-                                       width: 60, 
-                                       height: 60, 
-                                       backgroundColor: '#f5f5f5', 
-                                       borderRadius: '6px',
-                                       display: 'flex',
-                                       alignItems: 'center',
-                                       justifyContent: 'center'
-                                     }}
-                                   >
-                                     <PictureOutlined style={{ color: '#ccc', fontSize: '20px' }} />
-                                   </div>
-                                 )}
-                               </Col>
-                              
-                              {/* 餐厅基本信息 */}
-                              <Col span={18}>
-                                <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                  {/* 餐厅名称和评分 */}
-                                  <Row justify="space-between" align="middle">
-                                    <Col>
-                                      <Text strong style={{ fontSize: '14px' }}>
-                                        {restaurant.name}
-                                      </Text>
-                                    </Col>
-                                    <Col>
-                                      <Space size={4}>
-                                        <Rate 
-                                          disabled 
-                                          defaultValue={restaurant.rating || 0} 
-                                          style={{ fontSize: '12px' }}
-                                        />
-                                        <Text style={{ fontSize: '12px', color: '#666' }}>
-                                          {restaurant.rating ? restaurant.rating.toFixed(1) : 'N/A'}
-                                        </Text>
-                                      </Space>
-                                    </Col>
-                                  </Row>
-                                  
-                                  {/* 菜系类型和价格范围 */}
-                                  <Row justify="space-between" align="middle">
-                                    <Col>
-                                      <Space size={4}>
-                                        <TagOutlined style={{ fontSize: '12px', color: '#666' }} />
-                                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                                          {restaurant.cuisine_type || restaurant.category || '餐厅'}
-                                        </Text>
-                                      </Space>
-                                    </Col>
-                                    <Col>
-                                       <Space size={4}>
-                                         <DollarOutlined style={{ fontSize: '12px', color: '#52c41a' }} />
-                                         <Text style={{ fontSize: '12px', color: '#52c41a' }}>
-                                           {formatPrice(restaurant)}
-                                         </Text>
-                                       </Space>
-                                     </Col>
-                                  </Row>
-                                  
-                                  {/* 地址信息 */}
-                                  {restaurant.address && (
-                                    <Row>
-                                      <Col span={24}>
-                                        <Space size={4} align="start">
-                                          <EnvironmentOutlined style={{ fontSize: '12px', color: '#666', marginTop: '2px' }} />
-                                          <Text 
-                                            type="secondary" 
-                                            style={{ 
-                                              fontSize: '11px',
-                                              wordBreak: 'break-all',
-                                              whiteSpace: 'normal',
-                                              lineHeight: '1.4'
-                                            }}
-                                          >
-                                            {restaurant.address}
-                                          </Text>
-                                        </Space>
-                                      </Col>
-                                    </Row>
-                                  )}
-                                  
-                                  {/* 电话和距离 */}
-                                  <Row justify="space-between" align="middle">
-                                    {restaurant.phone && (
-                                      <Col>
-                                        <Space size={4}>
-                                          <PhoneOutlined style={{ fontSize: '12px', color: '#1890ff' }} />
-                                          <Text style={{ fontSize: '11px', color: '#1890ff' }}>
-                                            {restaurant.phone}
-                                          </Text>
-                                        </Space>
-                                      </Col>
-                                    )}
-                                    {restaurant.distance && (
-                                       <Col>
-                                         <Text type="secondary" style={{ fontSize: '11px' }}>
-                                           距离: {formatDistance(restaurant.distance)}
-                                         </Text>
-                                       </Col>
-                                     )}
-                                  </Row>
-                                  
-                                  {/* 营业区域和标签 */}
-                                  {(restaurant.business_area || restaurant.tags) && (
-                                    <Row>
-                                      <Col span={24}>
-                                        <Space size={4} wrap>
-                                          {restaurant.business_area && (
-                                            <Tag color="blue" style={{ fontSize: '11px' }}>
-                                               {restaurant.business_area}
-                                             </Tag>
-                                          )}
-                                          {restaurant.tags && restaurant.tags.slice(0, 2).map((tag: string, index: number) => (
-                                            <Tag key={index} color="default" style={{ fontSize: '11px' }}>
-                                               {tag}
-                                             </Tag>
-                                          ))}
-                                        </Space>
-                                      </Col>
-                                    </Row>
-                                  )}
-                                </Space>
-                              </Col>
-                            </Row>
-                          </Card>
+                          <RestaurantCard restaurant={restaurant} />
                         </List.Item>
                       )}
+
                     />
                   </Card>
                   )}
