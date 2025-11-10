@@ -182,14 +182,17 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 utils.logger.info(f"[XiaoHongShuCrawler.get_creators_and_notes] Parse creator URL info: {creator_info}")
                 user_id = creator_info.user_id
 
-                # get creator detail info from web html content
-                createor_info: Dict = await self.xhs_client.get_creator_info(
-                    user_id=user_id,
-                    xsec_token=creator_info.xsec_token,
-                    xsec_source=creator_info.xsec_source
-                )
+                createor_info = None
+                # 屏蔽用户信息获取，这个数据没啥用
                 if createor_info:
-                    await xhs_store.save_creator(user_id, creator=createor_info)
+                    # get creator detail info from web html content
+                    createor_info: Dict = await self.xhs_client.get_creator_info(
+                        user_id=user_id,
+                        xsec_token=creator_info.xsec_token,
+                        xsec_source=creator_info.xsec_source
+                    )
+                    if createor_info:
+                        await xhs_store.save_creator(user_id, creator=createor_info)
             except ValueError as e:
                 utils.logger.error(f"[XiaoHongShuCrawler.get_creators_and_notes] Failed to parse creator URL: {e}")
                 continue
