@@ -357,7 +357,10 @@ class PlaywrightXHSCrawler:
             
             while len(notes) < max_notes and scroll_count < max_scrolls:
                 # 提取当前页面的笔记
-                page_notes = await self._extract_notes_from_page(keyword)
+                remaining_needed = max_notes - len(notes)
+                if remaining_needed <= 0:
+                    break
+                page_notes = await self._extract_notes_from_page(keyword, max_to_extract=remaining_needed)
                 
                 # 去重并添加新笔记
                 for note in page_notes:
@@ -384,17 +387,19 @@ class PlaywrightXHSCrawler:
                             await self.page.wait_for_timeout(500)
                     scroll_count += 1
             
-            logger.info(f"成功获取 {len(notes)} 条真实笔记数据")
+            logger.info(f"成功获取 {min(len(notes), max_notes)} 条真实笔记数据")
             return notes[:max_notes]
             
         except Exception as e:
             logger.error(f"搜索笔记失败: {e}")
             return []
     
-    async def _extract_notes_from_page(self, keyword: str) -> List[Dict[str, Any]]:
+    async def _extract_notes_from_page(self, keyword: str, max_to_extract: Optional[int] = None) -> List[Dict[str, Any]]:
         """从当前页面提取笔记数据"""
         try:
             notes = []
+            if max_to_extract is not None and max_to_extract <= 0:
+                return notes
             
             # 使用更灵活的选择器策略
             selectors_to_try = [
@@ -429,7 +434,11 @@ class PlaywrightXHSCrawler:
                                 '/discovery/' in await link.get_attribute('href'))]
                 logger.info(f"通过链接过滤找到 {len(note_elements)} 个可能的笔记元素")
 
-            for element in note_elements[:20]:  # 限制处理数量
+            # 仍然保留一个安全上限，避免一次性解析过多元素
+            extraction_limit = max_to_extract if max_to_extract is not None else 20
+            extraction_limit = max(0, min(extraction_limit, 20))
+
+            for element in note_elements[:extraction_limit]:
                 try:
                     note_data = await self._extract_single_note(element, keyword)
                     if note_data:
