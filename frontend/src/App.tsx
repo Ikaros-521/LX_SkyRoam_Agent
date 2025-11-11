@@ -22,7 +22,7 @@ import PlanEditPage from './pages/PlanEditPage/PlanEditPage';
 
 const App: React.FC = () => {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#6366f1', colorInfo: '#6366f1', colorSuccess: '#10b981', colorWarning: '#f59e0b', colorError: '#ef4444', borderRadius: 12 } }}>
       <Router>
         <div className="App">
           <Layout>
@@ -39,7 +39,7 @@ const App: React.FC = () => {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
               <Route path="/admin/history" element={<RequireAdmin><HistoryAdminPage /></RequireAdmin>} />
-              // 新增：管理员编辑路由
+              {/* 新增：管理员编辑路由 */}
               <Route path="/plan/:id/edit" element={<RequireAdmin><PlanEditPage /></RequireAdmin>} />
             </Routes>
           </Layout>

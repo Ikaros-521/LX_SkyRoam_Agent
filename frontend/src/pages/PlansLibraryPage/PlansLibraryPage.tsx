@@ -25,6 +25,7 @@ type TabKey = 'my' | 'public';
 
 const PlansLibraryPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = window.location; // 直接读取以避免引入额外 hook
   const token = getToken();
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -45,7 +46,15 @@ const PlansLibraryPage: React.FC = () => {
     checkAdmin();
   }, []);
 
-  const [activeTab, setActiveTab] = useState<TabKey>('my');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    try {
+      const search = new URLSearchParams(location.search);
+      const q = (search.get('tab') || (location.hash || '').replace('#', '')).toLowerCase();
+      return q === 'public' ? 'public' : 'my';
+    } catch {
+      return 'my';
+    }
+  });
 
   // 我的计划状态
   const myLatestReq = useRef(0);

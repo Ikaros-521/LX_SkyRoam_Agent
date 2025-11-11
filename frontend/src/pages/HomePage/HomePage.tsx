@@ -8,7 +8,8 @@ import {
   Space,
   Divider,
   Statistic,
-  Carousel
+  Carousel,
+  Tag
 } from 'antd';
 import { 
   GlobalOutlined, 
@@ -73,72 +74,68 @@ const HomePage: React.FC = () => {
   return (
     <div className="homepage">
       {/* 英雄区域 */}
-      <div className="hero-section" style={{ 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: '80px 0',
-        textAlign: 'center',
-        color: 'white'
-      }}>
-        <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-          <Title level={1} style={{ color: 'white', marginBottom: '16px' }}>
+      <div className="hero-section">
+        <div className="hero-decor hero-decor-1" />
+        <div className="hero-decor hero-decor-2" />
+        <div className="hero-decor hero-decor-3" />
+        <div className="container">
+          <Title level={1} className="fade-in" style={{ marginBottom: 16 }}>
             <RocketOutlined style={{ marginRight: '16px' }} />
-            洛曦 云旅Agent
+            <span className="glass-text">洛曦 云旅Agent</span>
           </Title>
-          <Title level={2} style={{ color: 'white', fontWeight: 'normal', marginBottom: '24px' }}>
+          <Title level={2} className="fade-in" style={{ fontWeight: 'normal', marginBottom: 24 }}>
             您的智能旅行规划助手
           </Title>
-          <Paragraph style={{ fontSize: '18px', color: 'rgba(255,255,255,0.9)', marginBottom: '40px' }}>
+          <Paragraph className="fade-in" style={{ fontSize: 18, marginBottom: 24 }}>
             基于AI技术，为您提供个性化的旅行方案规划，让每一次旅行都成为美好回忆
           </Paragraph>
+          <Space wrap className="fade-in" size={[8, 8]}>
+            <Tag color="magenta">AI检索</Tag>
+            <Tag color="blue">即时规划</Tag>
+            <Tag color="gold">智能节省</Tag>
+          </Space>
         </div>
+        <svg className="hero-wave" viewBox="0 0 1440 120" preserveAspectRatio="none">
+          <path fill="#ffffff" d="M0,40 C240,120 480,0 720,60 C960,120 1200,40 1440,100 L1440,0 L0,0 Z" />
+        </svg>
       </div>
 
       {/* 开始规划按钮 */}
-      <div className="action-section" style={{ 
-        marginTop: '-60px', 
-        position: 'relative', 
-        zIndex: 10 
-      }}>
-        <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-          <Card 
-            style={{ 
-              borderRadius: '16px', 
-              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-              border: 'none',
-              textAlign: 'center',
-              padding: '40px 20px'
-            }}
-          >
+      <div className="action-section">
+        <div className="container">
+          <Card className="action-card glass-card" bodyStyle={{ padding: '40px 20px', textAlign: 'center' }}>
             <Title level={3} style={{ marginBottom: '16px' }}>
               开始您的智能旅行规划
             </Title>
             <Paragraph style={{ fontSize: '16px', color: '#666', marginBottom: '32px' }}>
               只需几步，AI将为您生成完美的旅行方案
             </Paragraph>
-            <Button 
-              type="primary" 
-              size="large"
-              icon={<ArrowRightOutlined />}
-              onClick={handleStartPlanning}
-              style={{ 
-                height: '48px',
-                paddingLeft: '32px',
-                paddingRight: '32px',
-                borderRadius: '24px',
-                fontSize: '16px',
-                fontWeight: 'bold'
-              }}
-            >
-              开始规划旅行
-            </Button>
+            <Space size="large" wrap style={{ justifyContent: 'center', display: 'flex' }}>
+              <Button 
+                type="primary" 
+                size="large"
+                icon={<ArrowRightOutlined />}
+                onClick={handleStartPlanning}
+                className="primary-cta"
+              >
+                开始规划旅行
+              </Button>
+              <Button 
+                 size="large"
+                 className="cta-secondary"
+                 onClick={() => navigate('/plans?tab=public')}
+               >
+                 查看示例方案
+               </Button>
+            </Space>
           </Card>
         </div>
       </div>
 
       {/* 功能特色 */}
-      <div className="features-section" style={{ padding: '80px 0', backgroundColor: '#f8f9fa' }}>
-        <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+      <div className="features-section">
+        <div className="container">
+          <div className="text-center" style={{ marginBottom: 60 }}>
             <Title level={2}>为什么选择我们？</Title>
             <Paragraph style={{ fontSize: '16px', color: '#666' }}>
               基于先进的AI技术，为您提供最专业的旅行规划服务
@@ -153,7 +150,7 @@ const HomePage: React.FC = () => {
                   style={{ textAlign: 'center', height: '100%' }}
                   bodyStyle={{ padding: '32px 24px' }}
                 >
-                  <div style={{ marginBottom: '16px' }}>
+                  <div className="icon-badge">
                     {feature.icon}
                   </div>
                   <Title level={4} style={{ marginBottom: '12px' }}>
@@ -170,8 +167,8 @@ const HomePage: React.FC = () => {
       </div>
 
       {/* 统计数据 */}
-      <div className="stats-section" style={{ padding: '60px 0', backgroundColor: 'white' }}>
-        <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
+      <div className="stats-section">
+        <div className="container">
           <Row gutter={[32, 32]}>
             <Col xs={12} sm={6}>
               <Statistic 
@@ -210,9 +207,9 @@ const HomePage: React.FC = () => {
       </div>
 
       {/* 用户评价 */}
-      <div className="testimonials-section" style={{ padding: '80px 0', backgroundColor: '#f8f9fa' }}>
-        <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+      <div className="testimonials-section">
+        <div className="container">
+          <div className="text-center" style={{ marginBottom: 60 }}>
             <Title level={2}>用户评价</Title>
             <Paragraph style={{ fontSize: '16px', color: '#666' }}>
               听听用户们怎么说
@@ -222,14 +219,7 @@ const HomePage: React.FC = () => {
           <Carousel autoplay dots>
             {testimonials.map((testimonial, index) => (
               <div key={index}>
-                <Card 
-                  style={{ 
-                    margin: '0 20px', 
-                    textAlign: 'center',
-                    border: 'none',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                  }}
-                >
+                <Card className="testimonial-card" style={{ margin: '0 20px', textAlign: 'center' }}>
                   <Paragraph style={{ fontSize: '16px', fontStyle: 'italic', marginBottom: '24px' }}>
                     "{testimonial.content}"
                   </Paragraph>
@@ -243,6 +233,38 @@ const HomePage: React.FC = () => {
             ))}
           </Carousel>
         </div>
+      </div>
+      {/* 如何工作 */}
+      <div className="how-section">
+      <div className="container">
+      <div className="text-center" style={{ marginBottom: 40 }}>
+      <Title level={2}>如何工作</Title>
+      <Paragraph className="section-subtitle">三步搞定你的旅行方案</Paragraph>
+      </div>
+      <Row gutter={[32, 32]}>
+      <Col xs={24} md={8}>
+      <Card className="step-card">
+      <div className="step-number">1</div>
+      <div className="step-title">输入偏好</div>
+      <Paragraph className="step-desc">目的地、预算、天数与旅行风格</Paragraph>
+      </Card>
+      </Col>
+      <Col xs={24} md={8}>
+      <Card className="step-card">
+      <div className="step-number">2</div>
+      <div className="step-title">AI生成路线</div>
+      <Paragraph className="step-desc">日程安排、交通衔接、餐饮住宿推荐</Paragraph>
+      </Card>
+      </Col>
+      <Col xs={24} md={8}>
+      <Card className="step-card">
+      <div className="step-number">3</div>
+      <div className="step-title">一键调整与分享</div>
+      <Paragraph className="step-desc">可视化编辑、导出与分享给伙伴</Paragraph>
+      </Card>
+      </Col>
+      </Row>
+      </div>
       </div>
     </div>
   );
