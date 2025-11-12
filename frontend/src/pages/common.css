@@ -1,0 +1,156 @@
+/* 通用暗色主题与玻璃态样式（全局复用） */
+:root {
+  --bg: #0f0f1e;
+  --bg-soft: #1a1a2e;
+  --text-strong: rgba(255,255,255,0.92);
+  --text: rgba(255,255,255,0.85);
+  --text-soft: rgba(255,255,255,0.65);
+  --border: rgba(255,255,255,0.2);
+  --border-soft: rgba(255,255,255,0.12);
+  --overlay: rgba(255,255,255,0.06);
+  --accent-a: #a78bfa; /* violet */
+  --accent-b: #60a5fa; /* blue */
+  --accent-c: #34d399; /* green */
+}
+
+/* 页面容器与标题样式 */
+.page-container { padding: 60px 24px; }
+.section-header { text-align: center; margin-bottom: 40px; }
+.section-header h2 {
+  font-weight: 800 !important; margin-bottom: 12px !important;
+  background: linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 50%, var(--accent-c) 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.section-header p { color: var(--text-soft) !important; }
+
+/* 通用玻璃卡片 */
+.glass-card {
+  background: var(--overlay) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 20px !important;
+  backdrop-filter: blur(20px) !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35) !important;
+}
+.glass-card:hover {
+  border-color: rgba(167,139,250,0.5) !important;
+  box-shadow: 0 0 40px rgba(167,139,250,0.3), 0 20px 60px rgba(0,0,0,0.4) !important;
+  transform: translateY(-6px) !important;
+}
+
+/* 渐变文本与按钮辅助样式 */
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 50%, var(--accent-c) 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; color: white !important; border: none !important; }
+.btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.btn-secondary { background: rgba(255,255,255,0.12) !important; color: white !important; border: 1px solid var(--border) !important; }
+.btn-secondary:hover { border-color: rgba(167,139,250,0.5) !important; }
+
+/* 文本与基础元素统一为暗色主题 */
+body, .ant-layout, .ant-layout-content { background: var(--bg) !important; }
+.ant-typography { color: var(--text) !important; }
+.ant-typography-secondary { color: var(--text-soft) !important; }
+
+/* 表单与输入控件 */
+.ant-form-item-label > label { color: var(--text) !important; }
+.ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker, .ant-input-number, .ant-cascader-picker {
+  background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important;
+}
+/* 前缀/后缀输入框容器与内部输入统一暗色 */
+.ant-input-affix-wrapper > input.ant-input { background: transparent !important; color: #fff !important; }
+.ant-input-suffix, .ant-input-prefix { color: var(--text-soft) !important; }
+/* 数字输入内部区域统一暗色 */
+.ant-input-number-input-wrap { background: var(--overlay) !important; background-color: var(--overlay) !important; }
+.ant-input-number .ant-input-number-input-wrap { background: var(--overlay) !important; }
+.ant-input-number-input { background: transparent !important; background-color: transparent !important; color: #fff !important; }
+.ant-input-number .ant-input-number-input { background: transparent !important; color: #fff !important; }
+/* 聚焦态统一高亮 */
+.ant-input-affix-wrapper-focused, .ant-input:focus,
+.ant-select-focused .ant-select-selector, .ant-picker-focused,
+.ant-input-number.ant-input-number-focused {
+  border-color: rgba(167,139,250,0.6) !important;
+  box-shadow: 0 0 0 2px rgba(167,139,250,0.25) !important;
+}
+.ant-input::placeholder, .ant-select-selection-placeholder, .ant-picker-input > input::placeholder, .ant-input-number-input::placeholder { color: rgba(255,255,255,0.45) !important; }
+/* InputNumber 步进器与按钮暗色适配 */
+.ant-input-number-handler-wrap { background: var(--overlay) !important; border-left: 1px solid rgba(255,255,255,0.2) !important; }
+.ant-input-number-handler, .ant-input-number-handler-up, .ant-input-number-handler-down { color: var(--text-soft) !important; }
+.ant-input-number-handler-up-inner, .ant-input-number-handler-down-inner { color: var(--text-soft) !important; }
+.ant-input-number:hover .ant-input-number-handler-wrap { background: rgba(255,255,255,0.08) !important; }
+.ant-select-arrow, .ant-picker-suffix { color: var(--text-soft) !important; }
+/* Input/InputNumber 组合附加区暗色背景 */
+.ant-input-group-addon, .ant-input-number-group-addon { background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important; }
+.ant-input-group-wrapper:hover .ant-input-group-addon, .ant-input-number-group-wrapper:hover .ant-input-number-group-addon { background: rgba(255,255,255,0.08) !important; }
+/* 组合内输入与数字输入背景保持一致 */
+.ant-input-group .ant-input, .ant-input-group .ant-input-number { background: var(--overlay) !important; }
+/* 强制覆盖 Ant v5 开发态 outlined 变体的白色背景 */
+.ant-input-number.ant-input-number-outlined { background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important; }
+:where(.css-dev-only-do-not-override-1fsucgp).ant-input-number-outlined { background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important; }
+/* 悬停与聚焦态保持统一高亮 */
+.ant-input-number-outlined:hover { border-color: rgba(167,139,250,0.6) !important; }
+.ant-input-number-outlined.ant-input-number-focused { box-shadow: 0 0 0 2px rgba(167,139,250,0.25) !important; }
+
+/* 卡片、表格、弹窗等容器 */
+.ant-card { background: var(--overlay) !important; border-color: var(--border) !important; color: var(--text) !important; }
+.ant-card-head { border-bottom-color: var(--border-soft) !important; }
+.ant-modal-content, .ant-drawer-content, .ant-popover-inner, .ant-dropdown-menu, .ant-tooltip-inner {
+  background: var(--bg-soft) !important; color: var(--text) !important; border: 1px solid var(--border-soft) !important;
+}
+.ant-modal-header, .ant-drawer-header { border-bottom-color: var(--border-soft) !important; }
+/* Tabs 标签与 Card 标题统一为白色 */
+.ant-card-head-title { color: var(--text-strong) !important; }
+.ant-tabs .ant-tabs-tab-btn { color: var(--text) !important; }
+.ant-tabs .ant-tabs-tab:hover .ant-tabs-tab-btn,
+.ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn { color: var(--text-strong) !important; }
+
+/* 表格暗色适配 */
+.ant-table, .ant-table-container { background: transparent !important; }
+.ant-table-thead > tr > th { background: var(--bg-soft) !important; color: var(--text) !important; border-bottom-color: var(--border-soft) !important; }
+.ant-table-tbody > tr > td { background: transparent !important; color: var(--text) !important; border-bottom-color: var(--border-soft) !important; }
+.ant-table-row:hover > td { background: rgba(255,255,255,0.04) !important; }
+
+/* 标签、提示等小组件 */
+/* 仅对非配色标签应用暗色文字与边框，避免预设色变淡 */
+.ant-tag:not(.ant-tag-has-color):not([class*="ant-tag-"]) { color: var(--text) !important; border-color: var(--border) !important; background: transparent !important; }
+.ant-tag.ant-tag-has-color { color: #fff !important; border-color: transparent !important; }
+.ant-alert { background: var(--overlay) !important; color: var(--text) !important; border: 1px solid var(--border-soft) !important; }
+
+/* 链接颜色 */
+a { color: #93c5fd; }
+a:hover { color: #bfdbfe; }
+
+/* Empty 空状态描述文字为白色 */
+.ant-empty-description { color: var(--text) !important; }
+
+/* List.Item.Meta 标题与描述为白色 */
+.ant-list-item-meta-title, .ant-list-item-meta-description { color: var(--text) !important; }
+
+/* 强调文本强白 */
+.ant-typography strong { color: var(--text-strong) !important; }
+
+/* Pagination 暗色适配：背景透明，文字白色，交互高亮 */
+.ant-pagination { color: var(--text) !important; }
+.ant-pagination-item { background: transparent !important; border-color: var(--border) !important; }
+.ant-pagination-item a { color: var(--text) !important; }
+.ant-pagination-item-ellipsis { color: var(--text-soft) !important; }
+.ant-pagination-item:hover { border-color: rgba(167,139,250,0.6) !important; background: rgba(255,255,255,0.06) !important; }
+.ant-pagination-item-active { border-color: rgba(167,139,250,0.6) !important; background: rgba(255,255,255,0.10) !important; }
+.ant-pagination-item-active a { color: var(--text-strong) !important; }
+.ant-pagination-next .ant-pagination-item-link, .ant-pagination-prev .ant-pagination-item-link {
+  color: var(--text) !important; background: transparent !important; border-color: var(--border) !important;
+}
+.ant-pagination-next:hover .ant-pagination-item-link, .ant-pagination-prev:hover .ant-pagination-item-link {
+  border-color: rgba(167,139,250,0.6) !important; background: rgba(255,255,255,0.06) !important;
+}
+.ant-pagination-total-text { color: var(--text) !important; }
+
+/* Steps 标题/描述配色：白色与柔灰 */
+.ant-steps-item-title { color: var(--text) !important; }
+.ant-steps-item-description { color: var(--text-soft) !important; }
+
+/* PlanDetail 轻色卡片中使用深色文本 */
+.plan-detail-page .light-card .ant-typography { color: rgba(0,0,0,0.85) !important; }
+.plan-detail-page .light-card .ant-typography-secondary { color: rgba(0,0,0,0.65) !important; }
+.plan-detail-page .light-card .ant-tag { color: rgba(0,0,0,0.85) !important; }
+.plan-detail-page .light-card .ant-card-body { color: rgba(0,0,0,0.85) !important; }

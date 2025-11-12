@@ -152,7 +152,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   );
 
   return (
-    <AntLayout style={{ minHeight: '100vh' }}>
+    <AntLayout style={{ minHeight: '100vh', background: '#0f0f1e' }}>
       <Header 
         style={{ 
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -246,14 +246,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </Form>
       </Modal>
 
-      <Content style={{ padding: '24px', minHeight: 'calc(100vh - 64px - 70px)' }}>
+      <Content style={{ padding: 0, minHeight: 'calc(100vh - 64px - 70px)', background: 'transparent' }}>
         {children}
       </Content>
 
       <Footer 
-        style={{ textAlign: 'center', background: '#f0f2f5', borderTop: '1px solid #d9d9d9' }}
+        style={{ textAlign: 'center', background: '#0f0f1e', borderTop: '1px solid rgba(255,255,255,0.1)' }}
       >
-        <div style={{ color: '#666' }}>
+        <div style={{ color: 'rgba(255,255,255,0.7)' }}>
           <p style={{ margin: '8px 0' }}>© 2025 洛曦 云旅Agent. 智能旅游攻略生成器</p>
           <p style={{ margin: '8px 0', fontSize: '12px' }}>基于AI技术，为您提供个性化的旅行方案规划</p>
         </div>

@@ -356,7 +356,7 @@ const LimitedTagList: React.FC<LimitedTagListProps> = ({ items, color = 'default
 };
 
 const ActivityTimelineCard: React.FC<{ entry: ScheduleEntry }> = ({ entry }) => (
-  <Card size="small" bordered={false} style={{ backgroundColor: '#f5f9ff' }}>
+  <Card size="small" bordered={false} style={{ backgroundColor: 'rgba(96, 165, 250, 0.12)' }}>
     <Space direction="vertical" size={2} style={{ width: '100%' }}>
       <Space size={6} wrap align="center">
         <Tag color="blue" style={{ marginBottom: 0 }}>{formatScheduleTime(entry)}</Tag>
@@ -383,7 +383,7 @@ const ActivityTimelineCard: React.FC<{ entry: ScheduleEntry }> = ({ entry }) => 
 );
 
 const MealTimelineCard: React.FC<{ meal: any }> = ({ meal }) => (
-  <Card size="small" bordered={false} style={{ backgroundColor: '#fff7e6' }}>
+  <Card size="small" bordered={false} style={{ backgroundColor: 'rgba(250, 140, 22, 0.12)' }}>
     <Space direction="vertical" size={2} style={{ width: '100%' }}>
       <Space size={6} wrap align="center">
         <Tag color="orange" style={{ marginBottom: 0 }}>{meal.type || '餐饮'}</Tag>
@@ -459,14 +459,14 @@ const AttractionCard: React.FC<{ attraction: Attraction; index: number }> = ({ a
   const experienceTips = ensureArray(attraction.experience_tips);
 
   return (
-    <Card key={index} size="small" style={{ backgroundColor: '#f6ffed' }}>
+    <Card key={index} size="small" style={{ backgroundColor: 'rgba(82, 196, 26, 0.12)' }}>
       <Space direction="vertical" size={4} style={{ width: '100%' }}>
         <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
           <Text strong>{attraction.name || `景点${index + 1}`}</Text>
           <Rate disabled value={ratingValue} style={{ fontSize: 10 }} />
         </Space>
         {attraction.description && (
-          <Text style={{ fontSize: 12, color: '#666' }}>{attraction.description}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{attraction.description}</Text>
         )}
         <Space size={4} wrap>
           {attraction.category && (
@@ -621,7 +621,7 @@ const DailyItineraryCard: React.FC<{ day: DailyItinerary }> = ({ day }) => {
         </Space>
         <Row gutter={[24, 24]}>
           <Col xs={24} lg={14}>
-            <Card size="small" title="行程安排" bordered={false} style={{ backgroundColor: '#fafafa' }}>
+            <Card size="small" title="行程安排" bordered={false} style={{ backgroundColor: 'var(--overlay)' }}>
               {timelineItems.length > 0 ? (
                 <Timeline mode="left" items={timelineItems} />
               ) : (
@@ -747,7 +747,7 @@ const RestaurantDishSection: React.FC<{ restaurant: any }> = ({ restaurant }) =>
                 </Col>
                 {dish?.description && (
                   <Col span={24}>
-                    <Text style={{ fontSize: '12px', color: '#666' }}>{dish.description}</Text>
+                    <Text type="secondary" style={{ fontSize: '12px' }}>{dish.description}</Text>
                   </Col>
                 )}
               </Row>
@@ -784,8 +784,8 @@ const RestaurantCard: React.FC<{ restaurant: any }> = ({ restaurant }) => {
               }}
             />
           ) : (
-            <div style={{ width: 60, height: 60, backgroundColor: '#f5f5f5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <PictureOutlined style={{ color: '#ccc', fontSize: '20px' }} />
+            <div style={{ width: 60, height: 60, backgroundColor: 'var(--overlay)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <PictureOutlined style={{ color: 'var(--text-soft)', fontSize: '20px' }} />
             </div>
           )}
         </Col>
@@ -800,7 +800,7 @@ const RestaurantCard: React.FC<{ restaurant: any }> = ({ restaurant }) => {
               <Col>
                 <Space size={4}>
                   <Rate disabled defaultValue={restaurant.rating || 0} style={{ fontSize: '12px' }} />
-                  <Text style={{ fontSize: '12px', color: '#666' }}>
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
                     {restaurant.rating ? restaurant.rating.toFixed(1) : 'N/A'}
                   </Text>
                 </Space>
@@ -809,7 +809,7 @@ const RestaurantCard: React.FC<{ restaurant: any }> = ({ restaurant }) => {
             <Row justify="space-between" align="middle">
               <Col>
                 <Space size={4}>
-                  <TagOutlined style={{ fontSize: '12px', color: '#666' }} />
+                  <TagOutlined style={{ fontSize: '12px', color: 'var(--text-soft)' }} />
                   <Text type="secondary" style={{ fontSize: '12px' }}>
                     {restaurant.cuisine_type || restaurant.category || '餐厅'}
                   </Text>
@@ -828,7 +828,7 @@ const RestaurantCard: React.FC<{ restaurant: any }> = ({ restaurant }) => {
               <Row>
                 <Col span={24}>
                   <Space size={4} align="start">
-                    <EnvironmentOutlined style={{ fontSize: '12px', color: '#666', marginTop: '2px' }} />
+                    <EnvironmentOutlined style={{ fontSize: '12px', color: 'var(--text-soft)', marginTop: '2px' }} />
                     <Text type="secondary" style={{ fontSize: '11px', wordBreak: 'break-all', whiteSpace: 'normal', lineHeight: '1.4' }}>
                       {restaurant.address}
                     </Text>
@@ -841,7 +841,7 @@ const RestaurantCard: React.FC<{ restaurant: any }> = ({ restaurant }) => {
                 <Col>
                   <Space size={4}>
                     <PhoneOutlined style={{ fontSize: '12px', color: '#1890ff' }} />
-                    <Text style={{ fontSize: '11px', color: '#1890ff' }}>
+                    <Text style={{ fontSize: '11px' }}>
                       {restaurant.phone}
                     </Text>
                   </Space>
@@ -1268,7 +1268,7 @@ const PlanDetailPage: React.FC = () => {
                     <TabPane tab="酒店" key="hotel">
                       <Card title={<Space><ShopOutlined /><span>酒店信息</span></Space>} size="small">
                         {currentPlan.hotel ? (
-                          <Card size="small" style={{ backgroundColor: '#fafafa' }}>
+                          <Card size="small" style={{ backgroundColor: 'var(--overlay)' }}>
                             <Row gutter={[8, 8]} align="middle">
                               <Col span={24}>
                                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
@@ -1279,7 +1279,7 @@ const PlanDetailPage: React.FC = () => {
                                     <Col>
                                       <Space size={4}>
                                         <Rate disabled defaultValue={currentPlan.hotel.rating || 0} style={{ fontSize: '12px' }} />
-                                        <Text style={{ fontSize: '12px', color: '#666' }}>
+                                        <Text type="secondary" style={{ fontSize: '12px' }}>
                                           {currentPlan.hotel.rating ? currentPlan.hotel.rating.toFixed(1) : 'N/A'}
                                         </Text>
                                       </Space>
@@ -1319,7 +1319,7 @@ const PlanDetailPage: React.FC = () => {
                                       <Col>
                                         <Space size={4}>
                                           <PhoneOutlined style={{ fontSize: '12px', color: '#1890ff' }} />
-                                          <Text style={{ fontSize: '11px', color: '#1890ff' }}>
+                                          <Text style={{ fontSize: '11px' }}>
                                             {currentPlan.hotel.phone}
                                           </Text>
                                         </Space>
@@ -1357,19 +1357,19 @@ const PlanDetailPage: React.FC = () => {
                                 : currentPlan.hotel.available_options.slice(1, 6)
                               ).map((hotel: any, index: number) => (
                                 <Col span={24} key={index}>
-                                  <Card size="small" style={{ backgroundColor: '#fafafa' }}>
+                                  <Card size="small" style={{ backgroundColor: 'var(--overlay)' }}>
                                     <Row gutter={8} align="middle">
                                       <Col flex="60px">
                                         <div style={{
                                           width: '50px',
                                           height: '50px',
-                                          backgroundColor: '#f0f0f0',
+                                          backgroundColor: 'var(--overlay)',
                                           borderRadius: '4px',
                                           display: 'flex',
                                           alignItems: 'center',
                                           justifyContent: 'center'
                                         }}>
-                                          <HomeOutlined style={{ color: '#ccc', fontSize: '18px' }} />
+                                          <HomeOutlined style={{ color: 'var(--text-soft)', fontSize: '18px' }} />
                                         </div>
                                       </Col>
                                       <Col flex="auto">
@@ -1382,7 +1382,7 @@ const PlanDetailPage: React.FC = () => {
                                               <Space size={4}>
                                                 <Rate disabled defaultValue={hotel.rating || 0} style={{ fontSize: '12px' }} />
                                                 {hotel.rating && (
-                                                  <Text style={{ fontSize: '12px', color: '#666' }}>
+                                                  <Text type="secondary" style={{ fontSize: '12px' }}>
                                                     {hotel.rating.toFixed(1)}
                                                   </Text>
                                                 )}
@@ -1407,7 +1407,7 @@ const PlanDetailPage: React.FC = () => {
                                               <Col>
                                                 <Space size={4}>
                                                   <PhoneOutlined style={{ fontSize: '12px', color: '#1890ff' }} />
-                                                  <Text style={{ fontSize: '11px', color: '#1890ff' }}>
+                                                  <Text style={{ fontSize: '11px' }}>
                                                     {hotel.phone}
                                                   </Text>
                                                 </Space>
@@ -1510,9 +1510,9 @@ const PlanDetailPage: React.FC = () => {
                             </Row>
                             <Row justify="space-between" align="middle" style={{ 
                               padding: '8px 12px', 
-                              backgroundColor: '#f6ffed', 
+                              backgroundColor: 'rgba(82, 196, 26, 0.12)', 
                               borderRadius: '6px',
-                              border: '1px solid #b7eb8f'
+                              border: '1px solid var(--border-soft)'
                             }}>
                               <Col>
                                 <Text strong style={{ color: '#52c41a', fontSize: '16px' }}>
@@ -1566,7 +1566,7 @@ const PlanDetailPage: React.FC = () => {
                                   {note.img_urls && note.img_urls.length > 0 ? (
                                     <img src={note.img_urls[0]} alt={note.title || '小红书笔记'} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
                                   ) : (
-                                    <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>无图片</div>
+                                    <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-soft)' }}>无图片</div>
                                   )}
                                 </a>
                                 <div style={{ padding: '6px 8px' }}>
@@ -1728,11 +1728,11 @@ const PlanDetailPage: React.FC = () => {
                                       </Col>
                                       <Col span={8} style={{ textAlign: 'center' }}>
                                         <div>
-                                          <Text style={{ fontSize: '12px', color: '#666' }}>
+                                          <Text type="secondary" style={{ fontSize: '12px' }}>
                                             {day.dayweather}
                                           </Text>
                                           {day.nightweather && day.nightweather !== day.dayweather && (
-                                            <Text style={{ fontSize: '12px', color: '#666' }}>
+                                            <Text type="secondary" style={{ fontSize: '12px' }}>
                                               转{day.nightweather}
                                             </Text>
                                           )}
@@ -1752,7 +1752,7 @@ const PlanDetailPage: React.FC = () => {
                                     </Row>
                                     {(day.daywind || day.daypower) && (
                                       <Row style={{ marginTop: '4px' }}>
-                                        <Text style={{ fontSize: '11px', color: '#999' }}>
+                                        <Text type="secondary" style={{ fontSize: '11px' }}>
                                           {day.daywind} {day.daypower}级
                                         </Text>
                                       </Row>
