@@ -405,8 +405,50 @@ const TravelPlanPage: React.FC = () => {
         throw new Error('启动方案生成失败');
       }
 
-      // 轮询生成状态
-      await pollGenerationStatus(planId);
+      // 通过SSE流式订阅状态
+      try {
+        const res = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_STATUS_STREAM(planId)));
+        if (!res.ok || !res.body) {
+          await pollGenerationStatus(planId);
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (const part of parts) {
+            const line = part.split('\n').find((l) => l.startsWith('data: '));
+            if (!line) continue;
+            const jsonStr = line.slice(6);
+            try {
+              const evt = JSON.parse(jsonStr);
+              if (typeof evt.progress === 'number') setProgress(evt.progress);
+              if (evt.preview && generationStatus === 'generating') setPreviewData(evt.preview);
+              if (evt.status === 'completed') {
+                setCurrentStep(3);
+                setGenerationStatus('completed');
+                setProgress(100);
+                setPreviewData(null);
+                setTimeout(() => navigate(`/plan/${planId}`), 2000);
+                return;
+              } else if (evt.status === 'failed') {
+                setGenerationStatus('failed');
+                return;
+              } else if (evt.status === 'timeout') {
+                setGenerationStatus('timeout');
+                return;
+              }
+            } catch {}
+          }
+        }
+      } catch {
+        await pollGenerationStatus(planId);
+      }
       
     } catch (error) {
       console.error('生成方案失败:', error);

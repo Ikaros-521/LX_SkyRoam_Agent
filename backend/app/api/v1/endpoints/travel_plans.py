@@ -19,7 +19,9 @@ from app.schemas.travel_plan import (
 from app.services.travel_plan_service import TravelPlanService
 from app.services.agent_service import AgentService
 from loguru import logger
-from fastapi.responses import HTMLResponse, JSONResponse, Response, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, PlainTextResponse, StreamingResponse
+import asyncio, time, json
+from app.core.config import settings
 from fastapi.encoders import jsonable_encoder
 
 # 新增导入
@@ -352,6 +354,74 @@ async def get_generation_status(
         "generated_plans": plan.generated_plans,
         "selected_plan": plan.selected_plan,
     }
+
+
+@router.get("/{plan_id}/status/stream")
+async def stream_generation_status(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """SSE流式返回方案生成状态（需拥有或管理员）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权查看该计划状态")
+
+    start_ts = time.time()
+    max_seconds = settings.PLAN_STATUS_STREAM_MAX_SECONDS
+
+    async def event_generator():
+        last_status = None
+        while True:
+            try:
+                current_plan = await service.get_travel_plan(plan_id)
+                status = current_plan.status
+                elapsed = time.time() - start_ts
+                base_progress = min(90, 10 + (elapsed / max_seconds) * 80)
+                progress = 100 if status == "completed" else (0 if status == "failed" else round(base_progress, 2))
+
+                payload = {
+                    "plan_id": plan_id,
+                    "status": status,
+                    "progress": progress,
+                    "preview": None,
+                }
+
+                try:
+                    gp = current_plan.generated_plans or []
+                    if isinstance(gp, list):
+                        for p in gp:
+                            if p and p.get("is_preview") and p.get("preview_type") == "raw_data_preview":
+                                payload["preview"] = p
+                                break
+                except Exception:
+                    payload["preview"] = None
+
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+                if status in ("completed", "failed"):
+                    break
+                if elapsed >= max_seconds:
+                    timeout_payload = {
+                        "plan_id": plan_id,
+                        "status": "timeout",
+                        "progress": round(base_progress, 2),
+                    }
+                    yield f"data: {json.dumps(timeout_payload, ensure_ascii=False)}\n\n"
+                    break
+
+                await asyncio.sleep(settings.PLAN_STATUS_STREAM_INTERVAL)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                err_payload = {"plan_id": plan_id, "status": "error", "message": str(e)}
+                yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+                break
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
 @router.post("/{plan_id}/select-plan")

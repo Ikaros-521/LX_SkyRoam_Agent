@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     MAP_TIPS_RATE_LIMIT_MAX: int = int(os.getenv("MAP_TIPS_RATE_LIMIT_MAX", "10"))
     MAP_TIPS_RATE_LIMIT_WINDOW: int = int(os.getenv("MAP_TIPS_RATE_LIMIT_WINDOW", "10"))
     MAP_TIPS_CACHE_TTL: int = int(os.getenv("MAP_TIPS_CACHE_TTL", "60"))
+
+    # 方案状态SSE流配置
+    PLAN_STATUS_STREAM_INTERVAL: int = int(os.getenv("PLAN_STATUS_STREAM_INTERVAL", "2"))
+    PLAN_STATUS_STREAM_MAX_SECONDS: int = int(os.getenv("PLAN_STATUS_STREAM_MAX_SECONDS", "900"))
     
     # 餐厅数据源配置
     RESTAURANT_DATA_SOURCE: str = os.getenv("RESTAURANT_DATA_SOURCE", "amap")  # 餐厅数据源: "baidu" 或 "amap" 或 "both"
