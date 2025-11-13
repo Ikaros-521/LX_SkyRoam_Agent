@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from contextlib import asynccontextmanager
 from .models import Base
-import app.config
-from app.config.db_config import mysql_db_config, sqlite_db_config
+from .. import config
+from ..config.db_config import mysql_db_config, sqlite_db_config
 
 # Keep a cache of engines
 _engines = {}

@@ -19,7 +19,7 @@ from typing import Optional, List, Tuple
 import asyncio
 from pathlib import Path
 
-from app.tools import utils
+from . import utils
 
 
 class BrowserLauncher:

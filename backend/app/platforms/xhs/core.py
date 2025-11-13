@@ -23,15 +23,15 @@ from playwright.async_api import (
 )
 from tenacity import RetryError
 
-import app.config
-from app.base.base_crawler import AbstractCrawler
-from app.config import CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES
+from . import config
+from .base.base_crawler import AbstractCrawler
+from .config import CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES
 from .model.m_xiaohongshu import NoteUrlInfo, CreatorUrlInfo
-from app.proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
-from app.store import xhs as xhs_store
-from app.tools import utils
-from app.tools.cdp_browser import CDPBrowserManager
-from app.platforms.xhs.var import crawler_type_var, source_keyword_var
+from .proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
+from .store import xhs as xhs_store
+from .tools import utils
+from .tools.cdp_browser import CDPBrowserManager
+from .var import crawler_type_var, source_keyword_var
 
 from .client import XiaoHongShuClient
 from .exception import DataFetchError

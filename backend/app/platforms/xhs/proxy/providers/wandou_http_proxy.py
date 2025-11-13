@@ -18,9 +18,9 @@ from urllib.parse import urlencode
 
 import httpx
 
-from app.proxy import IpCache, IpGetError, ProxyProvider
-from app.proxy.types import IpInfoModel
-from app.tools import utils
+from .. import IpCache, IpGetError, ProxyProvider
+from ..types import IpInfoModel
+from ...tools import utils
 
 
 class WanDouHttpProxy(ProxyProvider):

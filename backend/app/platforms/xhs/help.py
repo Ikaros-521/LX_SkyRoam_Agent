@@ -17,7 +17,7 @@ import urllib.parse
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from app.tools.crawler_util import extract_url_params_to_dict
+from .tools.crawler_util import extract_url_params_to_dict
 
 class NoteUrlInfo(BaseModel):
     note_id: str = Field(title="note id")

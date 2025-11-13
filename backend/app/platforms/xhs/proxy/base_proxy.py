@@ -18,10 +18,10 @@ import json
 from abc import ABC, abstractmethod
 from typing import List
 
-import app.config
-from app.cache.abs_cache import AbstractCache
-from app.cache.cache_factory import CacheFactory
-from app.tools.utils import utils
+from .. import config
+from ..cache.abs_cache import AbstractCache
+from ..cache.cache_factory import CacheFactory
+from ..tools.utils import utils
 
 from .types import IpInfoModel
 
@@ -44,7 +44,7 @@ class ProxyProvider(ABC):
 
 class IpCache:
     def __init__(self):
-        self.cache_client: AbstractCache = CacheFactory.create_cache(cache_type=app.config.CACHE_TYPE_MEMORY)
+        self.cache_client: AbstractCache = CacheFactory.create_cache(cache_type=config.CACHE_TYPE_MEMORY)
 
     def set_ip(self, ip_key: str, ip_value_info: str, ex: int):
         """

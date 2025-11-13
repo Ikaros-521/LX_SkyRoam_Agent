@@ -12,9 +12,9 @@
 import argparse
 import logging
 
-from app.tools.crawler_util import *
-from app.tools.slider_util import *
-from app.tools.time_util import *
+from ..tools.crawler_util import *
+from ..tools.slider_util import *
+from ..tools.time_util import *
 
 
 def init_loging_config():

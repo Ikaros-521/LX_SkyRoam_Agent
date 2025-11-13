@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Any
 from loguru import logger
 
 from .playwright_crawler import PlaywrightXHSCrawler
-from ...base.base_crawler import AbstractCrawler
+from .base.base_crawler import AbstractCrawler
 
 
 class XiaoHongShuRealCrawler(AbstractCrawler):

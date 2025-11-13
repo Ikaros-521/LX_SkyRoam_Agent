@@ -16,9 +16,9 @@ import httpx
 from typing import Optional, Dict, Any
 from playwright.async_api import Browser, BrowserContext, Playwright
 
-import app.config
-from app.tools.browser_launcher import BrowserLauncher
-from app.tools import utils
+from .. import config
+from .browser_launcher import BrowserLauncher
+from . import utils
 
 
 class CDPBrowserManager:

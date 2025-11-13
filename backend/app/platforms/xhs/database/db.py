@@ -12,7 +12,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 from app.tools import utils
-from app.database.db_session import create_tables
+from .database.db_session import create_tables
 
 async def init_table_schema(db_type: str):
     """

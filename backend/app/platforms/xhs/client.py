@@ -18,9 +18,9 @@ import httpx
 from playwright.async_api import BrowserContext, Page
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_result
 
-import app.config
-from app.base.base_crawler import AbstractApiClient
-from app.tools import utils
+from . import config
+from .base.base_crawler import AbstractApiClient
+from .tools import utils
 from html import unescape
 
 from .exception import DataFetchError, IPBlockError

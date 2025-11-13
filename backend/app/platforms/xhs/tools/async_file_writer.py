@@ -5,7 +5,7 @@ import os
 import pathlib
 from typing import Dict, List
 import aiofiles
-from app.tools.utils import utils
+from ..tools.utils import utils
 
 class AsyncFileWriter:
     def __init__(self, platform: str, crawler_type: str):

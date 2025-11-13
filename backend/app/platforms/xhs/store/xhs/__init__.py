@@ -14,7 +14,7 @@
 # @Desc    :
 from typing import List
 
-import app.config
+from ... import config
 from app.platforms.xhs.var import source_keyword_var
 
 from .xhs_store_media import *

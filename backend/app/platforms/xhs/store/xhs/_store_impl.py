@@ -11,14 +11,14 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.base.base_crawler import AbstractStore
-from app.database.db_session import get_session
-from app.database.models import XhsNote, XhsNoteComment, XhsCreator
+from ...base.base_crawler import AbstractStore
+from ...database.db_session import get_session
+from ...database.models import XhsNote, XhsNoteComment, XhsCreator
 
-from app.tools.async_file_writer import AsyncFileWriter
-from app.tools.time_util import get_current_timestamp
-from app.platforms.xhs.var import crawler_type_var
-from app.database.models import XhsNote, XhsNoteComment, XhsCreator
+from ...tools.async_file_writer import AsyncFileWriter
+from ...tools.time_util import get_current_timestamp
+from ...var import crawler_type_var
+from ...database.models import XhsNote, XhsNoteComment, XhsCreator
 
 class XhsCsvStoreImplement(AbstractStore):
     def __init__(self, **kwargs):

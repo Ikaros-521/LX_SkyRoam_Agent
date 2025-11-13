@@ -17,8 +17,8 @@ from typing import Dict
 
 import aiofiles
 
-from app.base.base_crawler import AbstractStoreImage, AbstractStoreVideo
-from app.tools import utils
+from ...base.base_crawler import AbstractStoreImage, AbstractStoreVideo
+from ...tools import utils
 
 
 class XiaoHongShuImage(AbstractStoreImage):

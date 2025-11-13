@@ -20,8 +20,8 @@ from typing import Any, List
 
 from redis import Redis
 
-from cache.abs_cache import AbstractCache
-from config import db_config
+from .abs_cache import AbstractCache
+from ..config import db_config
 
 
 class RedisCache(AbstractCache):

@@ -18,10 +18,10 @@ from playwright.async_api import BrowserContext, Page
 from tenacity import (RetryError, retry, retry_if_result, stop_after_attempt,
                       wait_fixed)
 
-import app.config
-from app.base.base_crawler import AbstractLogin
-from app.cache.cache_factory import CacheFactory
-from app.tools import utils
+from . import config
+from .base.base_crawler import AbstractLogin
+from .cache.cache_factory import CacheFactory
+from .tools import utils
 
 
 class XiaoHongShuLogin(AbstractLogin):

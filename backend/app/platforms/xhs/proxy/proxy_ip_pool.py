@@ -18,12 +18,12 @@ from typing import Dict, List
 import httpx
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-import app.config
-from app.proxy.providers import (
+from .. import config
+from .providers import (
     new_kuai_daili_proxy,
     new_wandou_http_proxy,
 )
-from app.tools import utils
+from ..tools import utils
 
 from .base_proxy import ProxyProvider
 from .types import IpInfoModel, ProviderNameEnum
