@@ -5,6 +5,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 import httpx
+import base64
 from typing import Optional
 from loguru import logger
 from app.core.config import settings
@@ -32,7 +33,8 @@ async def get_static_map(
     try:
         if provider == "amap":
             if not AMAP_API_KEY or AMAP_API_KEY == "your-amap-api-key-here":
-                raise HTTPException(status_code=500, detail="高德地图API密钥未配置")
+                img = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1f4iIAAAAASUVORK5CYII=")
+                return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
             
             # 构建高德静态地图URL - 使用正确的参数格式
             url = "https://restapi.amap.com/v3/staticmap"
@@ -58,7 +60,8 @@ async def get_static_map(
             
         elif provider == "baidu":
             if not BAIDU_API_KEY:
-                raise HTTPException(status_code=500, detail="百度地图API密钥未配置")
+                img = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1f4iIAAAAASUVORK5CYII=")
+                return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
             
             # 构建百度静态地图URL
             url = "https://api.map.baidu.com/staticimage/v2"
@@ -75,48 +78,60 @@ async def get_static_map(
                 params["markerStyles"] = "m,A"
             
         else:
-            raise HTTPException(status_code=400, detail="不支持的地图提供商")
+            img = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1f4iIAAAAASUVORK5CYII=")
+            return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
         
         # 请求静态地图
         logger.info(f"请求地图API: {url}")
         logger.info(f"请求参数: {params}")
         
+        # 结果缓存（base64）
+        from app.core.redis import get_cache as rc_get, set_cache as rc_set
+        cache_key = f"cache:map_static:{provider}:{longitude}:{latitude}:{zoom}:{width}x{height}:{title or ''}"
+        cached = await rc_get(cache_key)
+        if cached and isinstance(cached, dict) and cached.get("content"):
+            try:
+                content = base64.b64decode(cached["content"])
+                return Response(content=content, media_type=cached.get("type", "image/png"), headers={"Cache-Control": "public, max-age=600", "X-Map-Cache": "hit", "Access-Control-Allow-Origin": "*"})
+            except Exception:
+                pass
+
         async with httpx.AsyncClient(timeout=30.0, proxies=None) as client:
             response = await client.get(url, params=params)
             logger.info(f"响应状态码: {response.status_code}")
             logger.info(f"响应头: {response.headers}")
-            
             if response.status_code != 200:
                 error_text = response.text
                 logger.error(f"地图API返回错误状态码 {response.status_code}: {error_text}")
-                raise HTTPException(status_code=500, detail=f"地图API返回错误: {error_text}")
-            
-            response.raise_for_status()
-            
-            # 检查响应内容类型
+                img = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1f4iIAAAAASUVORK5CYII=")
+                return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
             content_type = response.headers.get("content-type", "")
             if not content_type.startswith("image/"):
-                # 如果不是图片，可能是错误响应
                 error_text = response.text
                 logger.error(f"地图API返回非图片内容: {error_text}")
-                raise HTTPException(status_code=500, detail="地图服务返回错误")
-            
-            # 返回图片
+                img = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1f4iIAAAAASUVORK5CYII=")
+                return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
             return Response(
                 content=response.content,
                 media_type=content_type,
                 headers={
-                    "Cache-Control": "public, max-age=3600",  # 缓存1小时
+                    "Cache-Control": "public, max-age=3600",
                     "Access-Control-Allow-Origin": "*"
                 }
             )
+            try:
+                await rc_set(cache_key, {"content": base64.b64encode(response.content).decode("utf-8"), "type": content_type}, ttl=600)
+            except Exception:
+                pass
             
     except httpx.HTTPError as e:
         logger.error(f"请求地图API失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="地图服务请求失败")
+        img = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1f4iIAAAAASUVORK5CYII=")
+        return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
     except Exception as e:
         logger.error(f"获取静态地图失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="获取地图失败")
+        img = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO1f4iIAAAAASUVORK5CYII=")
+        return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
 
 
 @router.get("/health")
@@ -126,10 +141,13 @@ async def map_health():
     """
     return {
         "status": "ok",
-        "amap_configured": bool(AMAP_API_KEY),
-        "baidu_configured": bool(BAIDU_API_KEY),
+        "map_provider": settings.MAP_PROVIDER,
         "input_tips_enabled": bool(settings.MAP_INPUT_TIPS_ENABLED),
-        "map_provider": settings.MAP_PROVIDER
+        "providers": {
+            "amap_configured": bool(AMAP_API_KEY),
+            "baidu_configured": bool(BAIDU_API_KEY),
+            "osm_supported": True
+        }
     }
 
 
@@ -153,8 +171,8 @@ async def input_tips(
     try:
         redis_client = await get_redis()
         ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (request.client.host if request.client else "unknown")
-        window = 10
-        max_requests = 10
+        window = settings.MAP_TIPS_RATE_LIMIT_WINDOW
+        max_requests = settings.MAP_TIPS_RATE_LIMIT_MAX
         import time
         bucket = int(time.time() // window)
         rl_key = f"rate:map_tips:{ip}:{bucket}"
@@ -209,11 +227,12 @@ async def input_tips(
                         "label": label,
                         "district": district,
                         "adcode": adcode,
-                        "location": location
+                        "location": location,
+                        "coord_sys": "gcj02"
                     })
 
                 result = {"options": options}
-                await set_cache(cache_key, result, ttl=60)
+                await set_cache(cache_key, result, ttl=settings.MAP_TIPS_CACHE_TTL)
                 return result
 
         elif source == 'osm':
@@ -259,11 +278,12 @@ async def input_tips(
                         "label": label,
                         "district": district,
                         "adcode": "",
-                        "location": location
+                        "location": location,
+                        "coord_sys": "wgs84"
                     })
 
                 result = {"options": options}
-                await set_cache(cache_key, result, ttl=60)
+                await set_cache(cache_key, result, ttl=settings.MAP_TIPS_CACHE_TTL)
                 return result
 
         else:
@@ -308,12 +328,20 @@ async def input_tips(
                             "label": label,
                             "district": district,
                             "adcode": uid,
-                            "location": location
+                            "location": location,
+                            "coord_sys": "bd09"
                         })
 
-                    result = {"options": options}
-                    await set_cache(cache_key, result, ttl=60)
-                    return result
+                # 去重
+                uniq = {}
+                for o in options:
+                    key = f"{o['value']}|{o['adcode']}|{o['location']}"
+                    if key not in uniq:
+                        uniq[key] = o
+                deduped = list(uniq.values())
+                result = {"options": deduped}
+                await set_cache(cache_key, result, ttl=settings.MAP_TIPS_CACHE_TTL)
+                return result
             raise HTTPException(status_code=400, detail="不支持的输入提示提供商")
     except httpx.HTTPError as e:
         logger.error(f"请求输入提示失败: {str(e)}")

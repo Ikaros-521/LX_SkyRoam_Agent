@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     MAP_PROVIDER: str = os.getenv("MAP_PROVIDER", "amap")  # 地图服务提供商: "baidu" 或 "amap"
     # 地点输入框提示配置
     MAP_INPUT_TIPS_ENABLED: bool = os.getenv("MAP_INPUT_TIPS_ENABLED", "true").lower() == "true"  # 输入提示开关
+    MAP_TIPS_RATE_LIMIT_MAX: int = int(os.getenv("MAP_TIPS_RATE_LIMIT_MAX", "10"))
+    MAP_TIPS_RATE_LIMIT_WINDOW: int = int(os.getenv("MAP_TIPS_RATE_LIMIT_WINDOW", "10"))
+    MAP_TIPS_CACHE_TTL: int = int(os.getenv("MAP_TIPS_CACHE_TTL", "60"))
     
     # 餐厅数据源配置
     RESTAURANT_DATA_SOURCE: str = os.getenv("RESTAURANT_DATA_SOURCE", "amap")  # 餐厅数据源: "baidu" 或 "amap" 或 "both"
