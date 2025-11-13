@@ -32,8 +32,13 @@ class Settings(BaseSettings):
     DATABASE_ECHO: bool = os.getenv("DATABASE_ECHO", False)
     
     # Redis配置
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_USERNAME: Optional[str] = os.getenv("REDIS_USERNAME", None)
     REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD", None)
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    REDIS_USE_TLS: bool = os.getenv("REDIS_USE_TLS", "false").lower() == "true"
     
     # Celery配置
     CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", os.getenv("REDIS_URL", "redis://localhost:6379/1"))
@@ -41,6 +46,8 @@ class Settings(BaseSettings):
     CELERY_WORKER_POOL: Optional[str] = os.getenv("CELERY_WORKER_POOL", None)
     CELERY_WORKER_CONCURRENCY: Optional[int] = int(os.getenv("CELERY_WORKER_CONCURRENCY", "0")) or None
     CELERY_PREFETCH_MULTIPLIER: int = int(os.getenv("CELERY_PREFETCH_MULTIPLIER", "2"))
+    CELERY_BROKER_DB: int = int(os.getenv("CELERY_BROKER_DB", "1"))
+    CELERY_BACKEND_DB: int = int(os.getenv("CELERY_BACKEND_DB", "2"))
     
     # OpenAI配置
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

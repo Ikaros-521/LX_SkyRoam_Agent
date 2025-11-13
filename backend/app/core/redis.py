@@ -19,15 +19,31 @@ async def init_redis():
     loop_id = id(asyncio.get_running_loop())
     try:
         if loop_id not in _pools_by_loop:
-            _pools_by_loop[loop_id] = ConnectionPool.from_url(
-                settings.REDIS_URL,
-                password=settings.REDIS_PASSWORD,
-                max_connections=20,
-                retry_on_timeout=True,
-                socket_connect_timeout=5,
-                socket_timeout=5,
-                health_check_interval=15
-            )
+            if settings.REDIS_URL:
+                _pools_by_loop[loop_id] = ConnectionPool.from_url(
+                    settings.REDIS_URL,
+                    max_connections=20,
+                    retry_on_timeout=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                    health_check_interval=15
+                )
+            else:
+                scheme = "rediss" if settings.REDIS_USE_TLS else "redis"
+                auth = ""
+                if settings.REDIS_USERNAME or settings.REDIS_PASSWORD:
+                    user = settings.REDIS_USERNAME or ""
+                    pwd = settings.REDIS_PASSWORD or ""
+                    auth = f"{user}:{pwd}@"
+                url = f"{scheme}://{auth}{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+                _pools_by_loop[loop_id] = ConnectionPool.from_url(
+                    url,
+                    max_connections=20,
+                    retry_on_timeout=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                    health_check_interval=15
+                )
         _clients_by_loop[loop_id] = redis.Redis(connection_pool=_pools_by_loop[loop_id])
         logger.info("✅ Redis连接池创建成功")
         # 测试连接（添加超时保护）

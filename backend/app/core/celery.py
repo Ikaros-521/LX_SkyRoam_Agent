@@ -9,10 +9,36 @@ import sys
 import platform
 
 # 创建Celery应用
+def _build_url(base_url: str, target_db: int) -> str:
+    try:
+        if not base_url:
+            return base_url
+        from urllib.parse import urlparse, urlunparse
+        u = urlparse(base_url)
+        # replace path with target db
+        path = f"/{target_db}"
+        return urlunparse((u.scheme, u.netloc, path, u.params, u.query, u.fragment))
+    except Exception:
+        return base_url
+
+def _compose_redis_url(db_index: int) -> str:
+    if settings.REDIS_URL:
+        return _build_url(settings.REDIS_URL, db_index)
+    scheme = "rediss" if settings.REDIS_USE_TLS else "redis"
+    auth = ""
+    if settings.REDIS_USERNAME or settings.REDIS_PASSWORD:
+        user = settings.REDIS_USERNAME or ""
+        pwd = settings.REDIS_PASSWORD or ""
+        auth = f"{user}:{pwd}@"
+    return f"{scheme}://{auth}{settings.REDIS_HOST}:{settings.REDIS_PORT}/{db_index}"
+
+broker_url = settings.CELERY_BROKER_URL or _compose_redis_url(settings.CELERY_BROKER_DB)
+backend_url = settings.CELERY_RESULT_BACKEND or _compose_redis_url(settings.CELERY_BACKEND_DB)
+
 celery_app = Celery(
     "lx_skyroam_agent",
-    broker=settings.CELERY_BROKER_URL or settings.REDIS_URL,
-    backend=settings.CELERY_RESULT_BACKEND or settings.REDIS_URL,
+    broker=broker_url,
+    backend=backend_url,
     include=[
         "app.tasks.travel_plan_tasks",
         "app.tasks.data_collection_tasks",
