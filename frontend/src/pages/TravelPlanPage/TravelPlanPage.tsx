@@ -3,6 +3,7 @@ import {
   Card, 
   Button, 
   Input, 
+  AutoComplete,
   DatePicker, 
   Select, 
   Form, 
@@ -25,6 +26,7 @@ import {
   Grid,
   Timeline
 } from 'antd';
+import type { AutoCompleteProps } from 'antd';
 import { 
   SearchOutlined, 
   GlobalOutlined, 
@@ -86,6 +88,13 @@ const TravelPlanPage: React.FC = () => {
   const isMountedRef = useRef(true);
   // 新增：预览数据
   const [previewData, setPreviewData] = useState<any | null>(null);
+  const [depOptions, setDepOptions] = useState<AutoCompleteProps['options']>([]);
+  const [destOptions, setDestOptions] = useState<AutoCompleteProps['options']>([]);
+  const depTimerRef = useRef<any>(null);
+  const destTimerRef = useRef<any>(null);
+  const depControllerRef = useRef<AbortController | null>(null);
+  const destControllerRef = useRef<AbortController | null>(null);
+  const placeCacheRef = useRef<Map<string, { value: string; label: React.ReactNode }[]>>(new Map());
 
   // 预览渲染工具函数（在组件内，便于使用）
   const getTitle = (item: any, fallback: string = '未命名') => (
@@ -198,6 +207,78 @@ const TravelPlanPage: React.FC = () => {
         </Row>
       </div>
     );
+  };
+
+  const fetchPlaces = async (q: string, signal?: AbortSignal) => {
+    const url = buildApiUrl(`${API_ENDPOINTS.MAP_INPUT_TIPS}?q=${encodeURIComponent(q)}&datatype=all&citylimit=false`);
+    const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) return [] as { value: string; label: React.ReactNode }[];
+    const data = await res.json();
+    const options = Array.isArray(data?.options) ? data.options : [];
+    return options.map((item: any) => {
+      const main = item?.value || '';
+      const sub = item?.district || '';
+      return {
+        value: item?.value || main,
+        key: `${item?.value || ''}-${item?.adcode || ''}-${item?.location || ''}`,
+        label: (
+          <Space direction="vertical" size={0} style={{ lineHeight: 1.2 }}>
+            <span style={{ fontWeight: 500 }}>{main}</span>
+            {sub && <Text type="secondary" style={{ fontSize: 12 }}>{sub}</Text>}
+          </Space>
+        ),
+      };
+    });
+  };
+
+  const handleSearchDeparture = (v: string) => {
+    const q = (v || '').trim();
+    if (depControllerRef.current) depControllerRef.current.abort();
+    if (depTimerRef.current) clearTimeout(depTimerRef.current);
+    if (q.length < 2) {
+      setDepOptions([]);
+      return;
+    }
+    depTimerRef.current = setTimeout(async () => {
+      const cacheKey = `dep:${q}`;
+      const cached = placeCacheRef.current.get(cacheKey);
+      if (cached) {
+        setDepOptions(cached.map((o: any) => ({ ...o })));
+        return;
+      }
+      const ctrl = new AbortController();
+      depControllerRef.current = ctrl;
+      try {
+        const opts = await fetchPlaces(q, ctrl.signal);
+        setDepOptions(opts);
+        placeCacheRef.current.set(cacheKey, opts);
+      } catch {}
+    }, 300);
+  };
+
+  const handleSearchDestination = (v: string) => {
+    const q = (v || '').trim();
+    if (destControllerRef.current) destControllerRef.current.abort();
+    if (destTimerRef.current) clearTimeout(destTimerRef.current);
+    if (q.length < 2) {
+      setDestOptions([]);
+      return;
+    }
+    destTimerRef.current = setTimeout(async () => {
+      const cacheKey = `dest:${q}`;
+      const cached = placeCacheRef.current.get(cacheKey);
+      if (cached) {
+        setDestOptions(cached.map((o: any) => ({ ...o })));
+        return;
+      }
+      const ctrl = new AbortController();
+      destControllerRef.current = ctrl;
+      try {
+        const opts = await fetchPlaces(q, ctrl.signal);
+        setDestOptions(opts);
+        placeCacheRef.current.set(cacheKey, opts);
+      } catch {}
+    }, 300);
   };
 
   // 接收来自首页的表单数据并自动提交
@@ -936,10 +1017,15 @@ const TravelPlanPage: React.FC = () => {
                   name="departure"
                   label="出发地"
                 >
-                  <Input 
-                    placeholder="请输入出发地" 
-                    prefix={<GlobalOutlined />}
-                  />
+                  <AutoComplete
+                    options={depOptions}
+                    onSearch={handleSearchDeparture}
+                    onSelect={(val) => form.setFieldsValue({ departure: val })}
+                    filterOption={false}
+                    style={{ width: '100%' }}
+                  >
+                    <Input placeholder="请输入出发地" prefix={<GlobalOutlined />} />
+                  </AutoComplete>
                 </Form.Item>
               </Col>
               
@@ -949,10 +1035,15 @@ const TravelPlanPage: React.FC = () => {
                   label="目的地"
                   rules={[{ required: true, message: '请输入目的地' }]}
                 >
-                  <Input 
-                    placeholder="请输入目的地" 
-                    prefix={<GlobalOutlined />}
-                  />
+                  <AutoComplete
+                    options={destOptions}
+                    onSearch={handleSearchDestination}
+                    onSelect={(val) => form.setFieldsValue({ destination: val })}
+                    filterOption={false}
+                    style={{ width: '100%' }}
+                  >
+                    <Input placeholder="请输入目的地" prefix={<GlobalOutlined />} />
+                  </AutoComplete>
                 </Form.Item>
               </Col>
             </Row>

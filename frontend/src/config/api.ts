@@ -59,6 +59,7 @@ export const API_ENDPOINTS = {
   // 地图
   MAP_STATIC: '/map/static',
   MAP_HEALTH: '/map/health',
+  MAP_INPUT_TIPS: '/map/tips',
   
   // 健康检查
   HEALTH: '/health'

@@ -5,15 +5,14 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 import httpx
-import os
 from typing import Optional
 from loguru import logger
+from app.core.config import settings
 
 router = APIRouter()
 
-# 获取API密钥
-AMAP_API_KEY = os.getenv('AMAP_API_KEY')
-BAIDU_API_KEY = os.getenv('BAIDU_MAPS_API_KEY')
+AMAP_API_KEY = settings.AMAP_API_KEY
+BAIDU_API_KEY = settings.BAIDU_MAPS_API_KEY
 
 
 @router.get("/static")
@@ -129,3 +128,57 @@ async def map_health():
         "amap_configured": bool(AMAP_API_KEY),
         "baidu_configured": bool(BAIDU_API_KEY)
     }
+
+
+@router.get("/tips")
+async def input_tips(
+    q: str = Query(..., min_length=1, description="输入关键字"),
+    city: Optional[str] = Query(None, description="指定城市，提高准确性"),
+    datatype: str = Query("all", description="返回数据类型: all|poi|bus|busline"),
+    citylimit: bool = Query(False, description="是否限制在指定城市内")
+):
+    """
+    输入提示（高德）代理，返回前端可用的自动完成选项
+    """
+    if not AMAP_API_KEY or AMAP_API_KEY == "your-amap-api-key-here":
+        raise HTTPException(status_code=500, detail="高德地图API密钥未配置")
+
+    url = "https://restapi.amap.com/v3/assistant/inputtips"
+    params = {
+        "key": AMAP_API_KEY,
+        "keywords": q,
+        "datatype": datatype,
+        "citylimit": 'true' if citylimit else 'false'
+    }
+    if city:
+        params["city"] = city
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, proxies=None) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"高德输入提示服务错误: {resp.text}")
+            data = resp.json()
+            if data.get("status") != "1":
+                raise HTTPException(status_code=500, detail=f"高德返回错误: {data.get('info')}")
+
+            tips = data.get("tips", [])
+            options = []
+            for item in tips:
+                name = item.get("name") or ""
+                district = item.get("district") or ""
+                adcode = item.get("adcode") or ""
+                location = item.get("location") or ""
+                label = name if not district else f"{name}（{district}）"
+                options.append({
+                    "value": name,
+                    "label": label,
+                    "district": district,
+                    "adcode": adcode,
+                    "location": location
+                })
+
+            return {"options": options}
+    except httpx.HTTPError as e:
+        logger.error(f"请求高德输入提示失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="地图服务请求失败")
