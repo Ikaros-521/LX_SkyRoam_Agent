@@ -126,7 +126,9 @@ async def map_health():
     return {
         "status": "ok",
         "amap_configured": bool(AMAP_API_KEY),
-        "baidu_configured": bool(BAIDU_API_KEY)
+        "baidu_configured": bool(BAIDU_API_KEY),
+        "input_tips_enabled": bool(settings.MAP_INPUT_TIPS_ENABLED),
+        "map_provider": settings.MAP_PROVIDER
     }
 
 

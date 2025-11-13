@@ -47,6 +47,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
 import { authFetch } from '../../utils/auth';
+import { createDebouncedFetcher } from '../../utils/searchUtils';
 import { TRANSPORTATION_OPTIONS, AGE_GROUP_OPTIONS, FOOD_PREFERENCES_OPTIONS, DIETARY_RESTRICTIONS_OPTIONS, PREFERENCES_OPTIONS } from '../../constants/travel';
 
 
@@ -90,11 +91,8 @@ const TravelPlanPage: React.FC = () => {
   const [previewData, setPreviewData] = useState<any | null>(null);
   const [depOptions, setDepOptions] = useState<AutoCompleteProps['options']>([]);
   const [destOptions, setDestOptions] = useState<AutoCompleteProps['options']>([]);
-  const depTimerRef = useRef<any>(null);
-  const destTimerRef = useRef<any>(null);
-  const depControllerRef = useRef<AbortController | null>(null);
-  const destControllerRef = useRef<AbortController | null>(null);
   const placeCacheRef = useRef<Map<string, { value: string; label: React.ReactNode }[]>>(new Map());
+  const [tipsEnabled, setTipsEnabled] = useState<boolean>(true);
 
   // 预览渲染工具函数（在组件内，便于使用）
   const getTitle = (item: any, fallback: string = '未命名') => (
@@ -188,18 +186,22 @@ const TravelPlanPage: React.FC = () => {
     };
   };
 
-  const renderPreviewGrid = (
-    data: any[],
-    renderCard: (item: any, idx: number) => React.ReactNode,
-    emptyText: string
-  ) => {
+  const PreviewGrid: React.FC<{ data: any[]; renderCard: (item: any, idx: number) => React.ReactNode; emptyText: string }> = ({ data, renderCard, emptyText }) => {
+    const [visible, setVisible] = useState<number>(12);
+    const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+        setVisible((v) => Math.min(v + 12, data.length));
+      }
+    };
     if (!Array.isArray(data) || data.length === 0) {
       return <Empty description={emptyText} />;
     }
+    const slice = data.slice(0, visible);
     return (
-      <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 8 }}>
+      <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 8 }} onScroll={onScroll}>
         <Row gutter={[16, 16]}>
-          {data.map((item, idx) => (
+          {slice.map((item, idx) => (
             <Col xs={24} sm={12} md={8} lg={6} key={idx}>
               {renderCard(item, idx)}
             </Col>
@@ -207,6 +209,14 @@ const TravelPlanPage: React.FC = () => {
         </Row>
       </div>
     );
+  };
+
+  const renderPreviewGrid = (
+    data: any[],
+    renderCard: (item: any, idx: number) => React.ReactNode,
+    emptyText: string
+  ) => {
+    return <PreviewGrid data={data} renderCard={renderCard} emptyText={emptyText} />;
   };
 
   const fetchPlaces = async (q: string, signal?: AbortSignal) => {
@@ -231,58 +241,23 @@ const TravelPlanPage: React.FC = () => {
     });
   };
 
-  const handleSearchDeparture = (v: string) => {
-    const q = (v || '').trim();
-    if (depControllerRef.current) depControllerRef.current.abort();
-    if (depTimerRef.current) clearTimeout(depTimerRef.current);
-    if (q.length < 2) {
-      setDepOptions([]);
-      return;
-    }
-    depTimerRef.current = setTimeout(async () => {
-      const cacheKey = `dep:${q}`;
-      const cached = placeCacheRef.current.get(cacheKey);
-      if (cached) {
-        setDepOptions(cached.map((o: any) => ({ ...o })));
-        return;
-      }
-      const ctrl = new AbortController();
-      depControllerRef.current = ctrl;
-      try {
-        const opts = await fetchPlaces(q, ctrl.signal);
-        setDepOptions(opts);
-        placeCacheRef.current.set(cacheKey, opts);
-      } catch {}
-    }, 300);
-  };
+  const depFetcher = createDebouncedFetcher(fetchPlaces, setDepOptions, placeCacheRef.current, 300);
+  const handleSearchDeparture = (v: string) => depFetcher('dep', v);
 
-  const handleSearchDestination = (v: string) => {
-    const q = (v || '').trim();
-    if (destControllerRef.current) destControllerRef.current.abort();
-    if (destTimerRef.current) clearTimeout(destTimerRef.current);
-    if (q.length < 2) {
-      setDestOptions([]);
-      return;
-    }
-    destTimerRef.current = setTimeout(async () => {
-      const cacheKey = `dest:${q}`;
-      const cached = placeCacheRef.current.get(cacheKey);
-      if (cached) {
-        setDestOptions(cached.map((o: any) => ({ ...o })));
-        return;
-      }
-      const ctrl = new AbortController();
-      destControllerRef.current = ctrl;
-      try {
-        const opts = await fetchPlaces(q, ctrl.signal);
-        setDestOptions(opts);
-        placeCacheRef.current.set(cacheKey, opts);
-      } catch {}
-    }, 300);
-  };
+  const destFetcher = createDebouncedFetcher(fetchPlaces, setDestOptions, placeCacheRef.current, 300);
+  const handleSearchDestination = (v: string) => destFetcher('dest', v);
 
   // 接收来自首页的表单数据并自动提交
   useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(buildApiUrl(API_ENDPOINTS.MAP_HEALTH));
+        const data = await res.json();
+        setTipsEnabled(Boolean(data?.input_tips_enabled));
+      } catch {
+        setTipsEnabled(true);
+      }
+    })();
     return () => {
       isMountedRef.current = false;
       if (pollTimerRef.current) {
@@ -1026,6 +1001,9 @@ const TravelPlanPage: React.FC = () => {
                   >
                     <Input placeholder="请输入出发地" prefix={<GlobalOutlined />} />
                   </AutoComplete>
+                  {!tipsEnabled && (
+                    <Text type="secondary">已关闭自动提示，请手动输入</Text>
+                  )}
                 </Form.Item>
               </Col>
               
@@ -1044,6 +1022,9 @@ const TravelPlanPage: React.FC = () => {
                   >
                     <Input placeholder="请输入目的地" prefix={<GlobalOutlined />} />
                   </AutoComplete>
+                  {!tipsEnabled && (
+                    <Text type="secondary">已关闭自动提示，请手动输入</Text>
+                  )}
                 </Form.Item>
               </Col>
             </Row>
