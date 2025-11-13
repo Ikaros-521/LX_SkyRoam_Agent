@@ -16,12 +16,10 @@ import {
   Spin,
   Progress,
   InputNumber,
-  Checkbox,
   Empty,
   Tooltip,
   Tag,
   Tabs,
-  List,
   Grid,
   Timeline
 } from 'antd';
@@ -29,15 +27,12 @@ import type { AutoCompleteProps } from 'antd';
 import { 
   SearchOutlined, 
   GlobalOutlined, 
-  CalendarOutlined,
-  DollarOutlined,
   CheckCircleOutlined,
   LoadingOutlined,
   UserOutlined,
   HeartOutlined,
   EnvironmentOutlined,
   StarFilled,
-  FireOutlined,
   LinkOutlined,
   ClockCircleOutlined,
   PictureOutlined
@@ -53,8 +48,6 @@ import { TRANSPORTATION_OPTIONS, AGE_GROUP_OPTIONS, FOOD_PREFERENCES_OPTIONS, DI
 const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
-const { Step } = Steps;
-// const { CheckboxGroup } = Checkbox; // 暂时不使用
 
 interface TravelRequest {
   departure?: string;  // 出发地（可选）
@@ -78,7 +71,6 @@ const TravelPlanPage: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
-  const [planId, setPlanId] = useState<number | null>(null);
   const [generationStatus, setGenerationStatus] = useState<string>('idle');
   const [progress, setProgress] = useState(0);
   const [autoSubmitting, setAutoSubmitting] = useState(false);
@@ -291,7 +283,7 @@ const TravelPlanPage: React.FC = () => {
         form.submit();
       }, 100); // 稍微延迟确保表单已渲染
     }
-  }, [location.state]); // 移除form依赖，避免重复提交
+  }, [location.state, form]);
 
   const steps = [
     {
@@ -366,7 +358,7 @@ const TravelPlanPage: React.FC = () => {
         throw new Error('创建计划响应格式错误');
       }
       
-      setPlanId(plan.id);
+      
       
       // 开始生成方案
       await generatePlans(plan.id, values);
