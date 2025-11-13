@@ -81,6 +81,9 @@ const TravelPlanPage: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [autoSubmitting, setAutoSubmitting] = useState(false);
   const hasAutoSubmitted = useRef(false);
+  const pollTimerRef = useRef<any>(null);
+  const currentPlanIdRef = useRef<number | null>(null);
+  const isMountedRef = useRef(true);
   // 新增：预览数据
   const [previewData, setPreviewData] = useState<any | null>(null);
 
@@ -199,6 +202,16 @@ const TravelPlanPage: React.FC = () => {
 
   // 接收来自首页的表单数据并自动提交
   useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const formData = location.state?.formData;
     if (formData && !hasAutoSubmitted.current) {
       console.log('接收到首页表单数据，自动提交:', formData);
@@ -316,6 +329,11 @@ const TravelPlanPage: React.FC = () => {
     setCurrentStep(2);
     setGenerationStatus('generating');
     setPreviewData(null); // 重置预览
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    currentPlanIdRef.current = planId;
     
     try {
       // 启动方案生成
@@ -352,7 +370,14 @@ const TravelPlanPage: React.FC = () => {
   const pollGenerationStatus = async (planId: number) => {
     let pollCount = 0;
     const maxPolls = 150; // 最大轮询次数：150次 * 6秒 = 15分钟
-    const pollInterval = setInterval(async () => {
+    pollTimerRef.current = setInterval(async () => {
+      if (currentPlanIdRef.current !== planId) {
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+        return;
+      }
       try {
         pollCount++;
         console.log(`轮询状态 ${pollCount}/${maxPolls}: 计划 ${planId}`);
@@ -365,21 +390,26 @@ const TravelPlanPage: React.FC = () => {
           const preview = Array.isArray(status.generated_plans)
             ? status.generated_plans.find((p: any) => p?.is_preview && p?.preview_type === 'raw_data_preview')
             : null;
-          setPreviewData(preview || null);
+          if (isMountedRef.current) setPreviewData(preview || null);
         }
         
         // 动态更新进度，基于轮询次数
         const newProgress = Math.min(10 + (pollCount * 0.6), 90);
-        setProgress(newProgress);
+        if (isMountedRef.current) setProgress(newProgress);
         
         console.log(`状态: ${status.status}, 进度: ${newProgress}%`);
         
         if (status.status === 'completed') {
-          clearInterval(pollInterval);
-          setCurrentStep(3);
-          setGenerationStatus('completed');
-          setProgress(100);
-          setPreviewData(null); // 完成后清空预览
+          if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
+          if (isMountedRef.current) {
+            setCurrentStep(3);
+            setGenerationStatus('completed');
+            setProgress(100);
+            setPreviewData(null);
+          }
           console.log('方案生成完成！');
           
           // 跳转到方案详情页
@@ -387,12 +417,18 @@ const TravelPlanPage: React.FC = () => {
             navigate(`/plan/${planId}`);
           }, 2000);
         } else if (status.status === 'failed') {
-          clearInterval(pollInterval);
-          setGenerationStatus('failed');
+          if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
+          if (isMountedRef.current) setGenerationStatus('failed');
           console.log('方案生成失败');
         } else if (pollCount >= maxPolls) {
-          clearInterval(pollInterval);
-          setGenerationStatus('timeout');
+          if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
+          if (isMountedRef.current) setGenerationStatus('timeout');
           console.log('轮询超时，已达到最大次数');
         }
       } catch (error) {
