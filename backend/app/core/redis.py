@@ -9,43 +9,35 @@ import asyncio
 
 from app.core.config import settings
 
-# Redis连接池
-redis_pool: ConnectionPool = None
-redis_client: redis.Redis = None
-_redis_loop_id: int = None
+# 按事件循环维护独立的Redis连接池与客户端，避免跨循环复用
+_pools_by_loop: dict[int, ConnectionPool] = {}
+_clients_by_loop: dict[int, redis.Redis] = {}
 
 
 async def init_redis():
-    """初始化Redis连接"""
-    global redis_pool, redis_client
-    
+    """初始化当前事件循环的Redis连接"""
+    loop_id = id(asyncio.get_running_loop())
     try:
-        # 创建连接池（增加连接与读写超时，避免阻塞）
-        redis_pool = ConnectionPool.from_url(
-            settings.REDIS_URL,
-            password=settings.REDIS_PASSWORD,
-            max_connections=20,
-            retry_on_timeout=True,
-            socket_connect_timeout=5,  # 连接超时（秒）
-            socket_timeout=5,          # 读写操作超时（秒）
-            health_check_interval=15   # 定期健康检查，避免长连接失效
-        )
-        
-        # 创建Redis客户端
-        redis_client = redis.Redis(connection_pool=redis_pool)
-        # 绑定当前事件循环ID
-        global _redis_loop_id
-        _redis_loop_id = id(asyncio.get_running_loop())
-        
+        if loop_id not in _pools_by_loop:
+            _pools_by_loop[loop_id] = ConnectionPool.from_url(
+                settings.REDIS_URL,
+                password=settings.REDIS_PASSWORD,
+                max_connections=20,
+                retry_on_timeout=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                health_check_interval=15
+            )
+        _clients_by_loop[loop_id] = redis.Redis(connection_pool=_pools_by_loop[loop_id])
         logger.info("✅ Redis连接池创建成功")
         # 测试连接（添加超时保护）
-        await redis_client.ping()
+        await _clients_by_loop[loop_id].ping()
         try:
-            await asyncio.wait_for(redis_client.ping(), timeout=3)
+            await asyncio.wait_for(_clients_by_loop[loop_id].ping(), timeout=3)
         except asyncio.TimeoutError:
             raise TimeoutError("Redis ping 超时")
         logger.info("✅ Redis连接成功")
-        
+        return _clients_by_loop[loop_id]
     except Exception as e:
         logger.error(f"❌ Redis连接失败: {e}")
         raise
@@ -53,30 +45,28 @@ async def init_redis():
 
 async def get_redis() -> redis.Redis:
     """获取Redis客户端"""
-    global _redis_loop_id
-    current_loop_id = id(asyncio.get_running_loop())
-    if redis_client is None or _redis_loop_id != current_loop_id:
-        # 事件循环不一致或未初始化，重新初始化
-        try:
-            await close_redis()
-        except Exception:
-            pass
-        await init_redis()
-    return redis_client
+    loop_id = id(asyncio.get_running_loop())
+    client = _clients_by_loop.get(loop_id)
+    if client is None:
+        client = await init_redis()
+    return client
 
 
 async def close_redis():
-    """关闭Redis连接"""
-    global redis_client, redis_pool
-    
-    if redis_client:
-        await redis_client.close()
-        redis_client = None
-    
-    if redis_pool:
-        await redis_pool.disconnect()
-        redis_pool = None
-    
+    """关闭当前事件循环的Redis连接"""
+    loop_id = id(asyncio.get_running_loop())
+    client = _clients_by_loop.pop(loop_id, None)
+    pool = _pools_by_loop.pop(loop_id, None)
+    if client:
+        try:
+            await client.close()
+        except Exception:
+            pass
+    if pool:
+        try:
+            await pool.disconnect()
+        except Exception:
+            pass
     logger.info("✅ Redis连接已关闭")
 
 
