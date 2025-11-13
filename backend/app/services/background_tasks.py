@@ -47,7 +47,7 @@ class BackgroundTaskManager:
         
         while self.running:
             try:
-                logger.info("执行缓存清理任务")
+                logger.debug("执行缓存清理任务")
                 
                 # 清理过期的缓存
                 redis_client = await get_redis()
@@ -61,7 +61,7 @@ class BackgroundTaskManager:
                 # 清理过期的天气缓存
                 await clear_cache_pattern("weather:*")
                 
-                logger.info("缓存清理完成")
+                logger.debug("缓存清理完成")
                 
                 # 每10分钟执行一次，避免长时间阻塞
                 await asyncio.sleep(600)
@@ -78,7 +78,7 @@ class BackgroundTaskManager:
         
         while self.running:
             try:
-                logger.info("执行数据刷新任务")
+                logger.debug("执行数据刷新任务")
                 
                 # 刷新热门目的地的数据（减少数量，避免阻塞）
                 popular_destinations = [
@@ -101,7 +101,7 @@ class BackgroundTaskManager:
                             asyncio.gather(*tasks, return_exceptions=True),
                             timeout=30.0
                         )
-                        logger.info(f"已刷新 {destination} 的数据")
+                        logger.debug(f"已刷新 {destination} 的数据")
                         
                         # 避免请求过于频繁
                         await asyncio.sleep(5)
@@ -114,7 +114,7 @@ class BackgroundTaskManager:
                         # 继续处理下一个目的地
                         continue
                 
-                logger.info("数据刷新完成")
+                logger.debug("数据刷新完成")
                 
                 # 每60分钟执行一次，避免长时间阻塞
                 await asyncio.sleep(3600)
@@ -131,7 +131,7 @@ class BackgroundTaskManager:
         
         while self.running:
             try:
-                logger.info("执行健康检查任务")
+                logger.debug("执行健康检查任务")
                 
                 # 并行检查各种连接，避免阻塞
                 tasks = [
@@ -144,7 +144,7 @@ class BackgroundTaskManager:
                 
                 # 检查结果
                 success_count = sum(1 for result in results if not isinstance(result, Exception))
-                logger.info(f"健康检查完成: {success_count}/{len(tasks)} 项通过")
+                logger.debug(f"健康检查完成: {success_count}/{len(tasks)} 项通过")
                 
                 # 每5分钟执行一次
                 await asyncio.sleep(300)
@@ -161,7 +161,7 @@ class BackgroundTaskManager:
         
         while self.running:
             try:
-                logger.info("执行监控任务")
+                logger.debug("执行监控任务")
                 
                 # 监控系统资源使用情况
                 import psutil
@@ -177,7 +177,7 @@ class BackgroundTaskManager:
                 disk = psutil.disk_usage('/')
                 disk_percent = disk.percent
                 
-                logger.info(f"系统监控 - CPU: {cpu_percent}%, 内存: {memory_percent}%, 磁盘: {disk_percent}%")
+                logger.debug(f"系统监控 - CPU: {cpu_percent}%, 内存: {memory_percent}%, 磁盘: {disk_percent}%")
                 
                 # 如果资源使用率过高，记录警告
                 if cpu_percent > 80:
