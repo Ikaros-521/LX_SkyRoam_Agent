@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Table, Tag, Typography, Space, Spin, Button, message, Grid } from 'antd';
 import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
 import { authFetch } from '../../utils/auth';
@@ -24,25 +24,29 @@ const HistoryAdminPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<TravelPlan[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [pagination, setPagination] = useState<{ current: number; pageSize: number; total: number }>({ current: 1, pageSize: 10, total: 0 });
   const screens = Grid.useBreakpoint();
 
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
     try {
-      const res = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLANS + '?skip=0&limit=50'));
+      const skip = (page - 1) * pageSize;
+      const res = await authFetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLANS + `?skip=${skip}&limit=${pageSize}`));
       const data = await res.json();
       const list = Array.isArray(data?.plans) ? data.plans : [];
+      const total = typeof data?.total === 'number' ? data.total : list.length;
       setPlans(list);
+      setPagination(prev => ({ ...prev, current: page, pageSize, total }));
     } catch (e) {
       setPlans([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.pageSize]);
 
   useEffect(() => {
-    fetchPlans();
-  }, []);
+    fetchPlans(1, pagination.pageSize);
+  }, [fetchPlans, pagination.pageSize]);
 
   const handleDeletePlan = async (planId: number) => {
     if (!window.confirm(`确认删除计划 ${planId} ?`)) return;
@@ -52,7 +56,7 @@ const HistoryAdminPage: React.FC = () => {
       });
       if (response.ok) {
         message.success('计划已删除');
-        fetchPlans();
+        fetchPlans(pagination.current, pagination.pageSize);
       } else {
         const err = await response.json();
         message.error(err?.detail || '删除失败');
@@ -78,7 +82,7 @@ const HistoryAdminPage: React.FC = () => {
         const data = await res.json();
         message.success(`已删除 ${data?.deleted || 0} 条计划`);
         setSelectedIds([]);
-        fetchPlans();
+        fetchPlans(pagination.current, pagination.pageSize);
       } else {
         const err = await res.json();
         message.error(err?.detail || '批量删除失败');
@@ -138,7 +142,16 @@ const HistoryAdminPage: React.FC = () => {
               columns={columns as any}
               dataSource={plans}
               rowSelection={rowSelection}
-              pagination={{ pageSize: 10 }}
+              pagination={{
+                current: pagination.current,
+                pageSize: pagination.pageSize,
+                total: pagination.total,
+                showSizeChanger: true,
+                onChange: (page, pageSize) => {
+                  fetchPlans(page, pageSize);
+                  setSelectedIds([]);
+                },
+              }}
               size={screens.xs ? 'small' : 'middle'}
               scroll={{ x: 'max-content' }}
             />
