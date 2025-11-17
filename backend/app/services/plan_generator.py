@@ -593,7 +593,7 @@ class PlanGenerator:
         if isinstance(activity_preferences, str):
             activity_preferences = [activity_preferences]
         
-        logger.warning(f"preference={preference}")
+        logger.warning(f"preferences={preferences}")
 
         # 基础偏好组（所有方案都包含）
         base_preferences = {
@@ -717,6 +717,7 @@ class PlanGenerator:
             return merged_plans
             
         except Exception as e:
+            logger.error(traceback.format_exc())
             logger.error(f"[计划生成器] 拆分偏好生成失败: {e}")
             return []
 
