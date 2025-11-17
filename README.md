@@ -62,13 +62,23 @@ LX_SkyRoam_Agent/
 │   ├── app/
 │   │   ├── api/            # API路由
 │   │   ├── core/           # 核心配置
+│   │   ├── mcp/            # MCP工具
 │   │   ├── models/         # 数据模型
+│   │   ├── platforms/      # 平台相关(小红书爬虫)
 │   │   ├── services/       # 业务逻辑
-│   │   ├── agents/         # AI Agent
-│   │   ├── tools/          # MCP工具
-│   │   └── utils/          # 工具函数
-│   ├── requirements.txt
-│   └── main.py
+│   │   ├── tasks/          # celery异步任务
+│   │   ├── tools/          # 工具
+│   ├── scripts/            # 脚本
+│   ├── tests/              # 测试
+│   ├── uploads/            # 上传文件目录（挂载静态文件）
+│   ├── logs/               # 日志目录
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   ├── .env.example        # 环境变量示例
+│   ├── .env                # 环境变量
+│   ├── requirements.txt    # 依赖包
+│   └── main.py             # 应用入口
 ├── frontend/               # 前端应用
 │   ├── src/
 │   │   ├── components/     # React组件
@@ -129,6 +139,13 @@ cd backend && celery -A app.core.celery worker --loglevel=info
 
 # 启动前端
 cd frontend && npm start
+
+# 启动高德API服务
+cd backend && python mcp_http_server_amap.py
+
+# 启动小红书爬虫服务
+cd backend && python xhs_api_server.py
+
 ```
 
 ## 使用说明
