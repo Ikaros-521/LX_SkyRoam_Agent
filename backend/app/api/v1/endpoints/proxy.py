@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 import httpx
+from app.core.config import settings
 from urllib.parse import urlparse
 from pathlib import Path
 import json
@@ -80,8 +81,25 @@ async def proxy_image(
     if cookie_header:
         headers["Cookie"] = cookie_header
 
-    logger.info(f"[图片代理] 请求URL: {url}")
-    logger.info(f"[图片代理] 请求头: {{'User-Agent': headers['User-Agent'], 'Referer': headers['Referer'], 'Host': headers['Host'], 'Cookie': '***' if 'Cookie' in headers else '(none)'}}")
+    logger.debug(f"[图片代理] 请求URL: {url}")
+    logger.debug(f"[图片代理] 请求头: {{'User-Agent': headers['User-Agent'], 'Referer': headers['Referer'], 'Host': headers['Host'], 'Cookie': '***' if 'Cookie' in headers else '(none)'}}")
+
+    api_base = settings.XHS_API_BASE
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        try:
+            r1 = await client.get(f"{api_base}/proxy/image", params={"url": url, "referer": referer})
+            if r1.status_code == 200:
+                ct = r1.headers.get("content-type", "image/jpeg")
+                return StreamingResponse(r1.aiter_bytes(), media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+        except Exception as e:
+            logger.warning(f"[图片代理] 小红书服务(image)调用失败: {e}")
+        try:
+            r2 = await client.get(f"{api_base}/proxy/image_browser", params={"url": url, "referer": referer})
+            if r2.status_code == 200:
+                ct = r2.headers.get("content-type", "image/jpeg")
+                return StreamingResponse(r2.aiter_bytes(), media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+        except Exception as e:
+            logger.warning(f"[图片代理] 小红书服务(image_browser)调用失败: {e}")
 
     use_http2 = False
     try:
@@ -126,6 +144,22 @@ async def proxy_image(
                     return StreamingResponse(alt_resp.aiter_bytes(), media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
             except Exception as e:
                 logger.warning(f"[图片代理] 备用域请求失败: {e}")
+        api_base = settings.XHS_API_BASE
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c2:
+            try:
+                r3 = await c2.get(f"{api_base}/proxy/image", params={"url": url, "referer": referer})
+                if r3.status_code == 200:
+                    ct = r3.headers.get("content-type", "image/jpeg")
+                    return StreamingResponse(r3.aiter_bytes(), media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+            except Exception as e:
+                logger.warning(f"[图片代理] 小红书服务(image)非200回退失败: {e}")
+            try:
+                r4 = await c2.get(f"{api_base}/proxy/image_browser", params={"url": url, "referer": referer})
+                if r4.status_code == 200:
+                    ct = r4.headers.get("content-type", "image/jpeg")
+                    return StreamingResponse(r4.aiter_bytes(), media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+            except Exception as e:
+                logger.warning(f"[图片代理] 小红书服务(image_browser)非200回退失败: {e}")
         raise HTTPException(status_code=resp.status_code, detail="源站返回非200")
 
     content_type = resp.headers.get("content-type", "image/jpeg")

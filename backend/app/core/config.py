@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     TASK_TIMEOUT: int = os.getenv("TASK_TIMEOUT", 300)  # 5分钟
     MAX_CONCURRENT_TASKS: int = os.getenv("MAX_CONCURRENT_TASKS", 10)
 
+    # 小红书服务配置
+    XHS_API_BASE: str = os.getenv("XHS_API_BASE", "http://127.0.0.1:8002")
+
     # 数据源配置
     DATA_SOURCES: List[str] = [
         "flights",

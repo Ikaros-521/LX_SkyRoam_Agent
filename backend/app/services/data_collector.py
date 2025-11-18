@@ -32,7 +32,7 @@ class DataCollector:
         self.amap_client = AmapMCPClient()
         self.city_resolver = CityResolver()
         # self.web_scraper = WebScraper()  # 已移除爬虫功能
-        self.xhs_client = XHSAPIClient()  # 小红书API客户端
+        self.xhs_client = XHSAPIClient(settings.XHS_API_BASE)  # 小红书API客户端
         self.http_client = httpx.AsyncClient(
             timeout=30.0,
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),

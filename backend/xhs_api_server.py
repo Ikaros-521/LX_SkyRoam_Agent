@@ -258,7 +258,162 @@ class XHSAPIServer:
                 error_trace = traceback.format_exc()
                 logger.error(f"搜索失败: {error_msg}")
                 logger.error(f"错误堆栈: {error_trace}")
-                raise HTTPException(status_code=500, detail=f"搜索失败: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"搜索失败: {error_msg}")
+
+        def _xhs_is_allowed_host(url: str) -> bool:
+            try:
+                from urllib.parse import urlparse as _urlparse
+                parsed = _urlparse(url)
+                if parsed.scheme not in ("http", "https"):
+                    return False
+                host = (parsed.hostname or "").lower()
+                return host.endswith(".xhscdn.com") or host.endswith(".xiaohongshu.com")
+            except Exception:
+                return False
+
+        def _xhs_load_cookies_list() -> list:
+            try:
+                from pathlib import Path as _Path
+                import json as _json
+                cookies_dir = _Path(__file__).parent / "data" / "cookies"
+                candidates = [
+                    cookies_dir / "xhs_cookies_primary.json",
+                    cookies_dir / "xhs_cookies_backup.json",
+                    cookies_dir / "xhs_cookies.json",
+                ]
+                cookie_file = next((p for p in candidates if p.exists()), None)
+                if not cookie_file:
+                    return []
+                with open(cookie_file, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+                cookies = data.get("cookies", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                return cookies
+            except Exception:
+                return []
+
+        @self.app.get("/proxy/image")
+        async def proxy_image(url: str, referer: str = "https://www.xiaohongshu.com/explore"):
+            if not _xhs_is_allowed_host(url):
+                raise HTTPException(status_code=400, detail="不支持的图片来源")
+            from urllib.parse import urlparse as _urlparse
+            parsed = _urlparse(url)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                "Referer": referer,
+                "Origin": "https://www.xiaohongshu.com",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Host": parsed.hostname or "",
+                "Sec-Fetch-Site": "cross-site",
+                "Sec-Fetch-Mode": "no-cors",
+                "Sec-Fetch-Dest": "image",
+                "sec-ch-ua": '"Chromium";v="120", "Not?A_Brand";v="99", "Google Chrome";v="120"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "Cache-Control": "no-cache",
+            }
+            cookies = _xhs_load_cookies_list()
+            cookie_header = "; ".join([f"{c.get('name')}={c.get('value')}" for c in cookies if c.get('name') and c.get('value')])
+            if cookie_header:
+                headers["Cookie"] = cookie_header
+            use_http2 = False
+            try:
+                import h2  # type: ignore
+                use_http2 = True
+            except Exception:
+                use_http2 = False
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=20.0, follow_redirects=True, http2=use_http2) as client:
+                try:
+                    resp = await client.get(url, headers=headers)
+                except Exception:
+                    try:
+                        async with _httpx.AsyncClient(timeout=20.0, follow_redirects=True, verify=False) as insecure_client:
+                            insecure_resp = await insecure_client.get(url, headers=headers)
+                            if insecure_resp.status_code == 200:
+                                from fastapi.responses import StreamingResponse as _SR
+                                ct = insecure_resp.headers.get("content-type", "image/jpeg")
+                                return _SR(insecure_resp.aiter_bytes(), media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+                    except Exception:
+                        pass
+                    raise HTTPException(status_code=502, detail="源站请求失败")
+            if resp.status_code != 200:
+                host = parsed.hostname or ""
+                fallback_hosts = []
+                if host.startswith("sns-webpic-") and host.endswith(".xhscdn.com"):
+                    region = host.split("sns-webpic-")[-1].replace(".xhscdn.com", "")
+                    fallback_hosts.append(f"sns-img-{region}.xhscdn.com")
+                for region in ["qc", "hw", "bd"]:
+                    h = f"sns-img-{region}.xhscdn.com"
+                    if h not in fallback_hosts:
+                        fallback_hosts.append(h)
+                for fh in fallback_hosts:
+                    alt = url.replace(host, fh)
+                    try:
+                        alt_headers = dict(headers)
+                        alt_headers["Host"] = fh
+                        alt_resp = await client.get(alt, headers=alt_headers)
+                        if alt_resp.status_code == 200:
+                            from fastapi.responses import StreamingResponse as _SR
+                            content_type = alt_resp.headers.get("content-type", "image/jpeg")
+                            return _SR(alt_resp.aiter_bytes(), media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
+                    except Exception:
+                        continue
+                raise HTTPException(status_code=resp.status_code, detail="源站返回非200")
+            content_type = resp.headers.get("content-type", "image/jpeg")
+            if not content_type.startswith("image/"):
+                raise HTTPException(status码=400, detail="非图片内容")
+            from fastapi.responses import StreamingResponse as _SR
+            return _SR(resp.aiter_bytes(), media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
+
+        @self.app.get("/proxy/image_browser")
+        async def proxy_image_browser(url: str, referer: str = "https://www.xiaohongshu.com/explore"):
+            if not _xhs_is_allowed_host(url):
+                raise HTTPException(status_code=400, detail="不支持的图片来源")
+            from urllib.parse import urlparse as _urlparse
+            parsed = _urlparse(url)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                "Referer": referer,
+                "Origin": "https://www.xiaohongshu.com",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Host": parsed.hostname or "",
+                "Sec-Fetch-Site": "cross-site",
+                "Sec-Fetch-Mode": "no-cors",
+                "Sec-Fetch-Dest": "image",
+                "sec-ch-ua": '"Chromium";v="120", "Not?A_Brand";v="99", "Google Chrome";v="120"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "Cache-Control": "no-cache",
+            }
+            cookies_list = _xhs_load_cookies_list()
+            try:
+                from playwright.async_api import async_playwright as _apw
+                async with _apw() as pw:
+                    req_ctx = await pw.request.new_context(
+                        user_agent=headers.get("User-Agent", ""),
+                        extra_http_headers=headers,
+                        storage_state={"cookies": cookies_list} if cookies_list else None,
+                    )
+                    pw_resp = await req_ctx.get(url)
+                    body = await pw_resp.body() if pw_resp.ok else b""
+                    await req_ctx.dispose()
+                    if pw_resp.ok and body:
+                        from fastapi.responses import StreamingResponse as _SR
+                        ct = pw_resp.headers.get("content-type", "image/jpeg")
+                        import io as _io
+                        return _SR(_io.BytesIO(body), media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+                    else:
+                        raise HTTPException(status_code=pw_resp.status, detail="源站返回非200")
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=502, detail="源站请求失败")
         
         @self.app.post("/crawler/start")
         async def start_crawler():

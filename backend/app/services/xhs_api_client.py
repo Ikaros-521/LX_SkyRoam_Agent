@@ -7,13 +7,14 @@ import asyncio
 import aiohttp
 from typing import Dict, Any, List, Optional
 from loguru import logger
+from app.core.config import settings
 
 
 class XHSAPIClient:
     """小红书API客户端"""
     
-    def __init__(self, base_url: str = "http://localhost:8002"):
-        self.base_url = base_url
+    def __init__(self, base_url: Optional[str] = None):
+        self.base_url = base_url or settings.XHS_API_BASE
         self.session: Optional[aiohttp.ClientSession] = None
     
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -118,4 +119,4 @@ class XHSAPIClient:
 
 
 # 全局客户端实例
-xhs_api_client = XHSAPIClient()
+xhs_api_client = XHSAPIClient(settings.XHS_API_BASE)
