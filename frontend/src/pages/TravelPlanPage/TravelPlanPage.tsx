@@ -1105,17 +1105,24 @@ const TravelPlanPage: React.FC = () => {
                   name="departure"
                   label="出发地"
                 >
-                  <AutoComplete
-                    options={depOptions}
-                    onSearch={handleSearchDeparture}
-                    onSelect={(val) => form.setFieldsValue({ departure: val })}
-                    filterOption={false}
-                    style={{ width: '100%' }}
-                  >
-                    <Input placeholder="请输入出发地" prefix={<GlobalOutlined />} />
-                  </AutoComplete>
-                  {!tipsEnabled && (
-                    <Text type="secondary">已关闭自动提示，请手动输入</Text>
+                  {tipsEnabled ? (
+                    <AutoComplete
+                      options={depOptions}
+                      onSearch={handleSearchDeparture}
+                      onSelect={(val) => form.setFieldsValue({ departure: val })}
+                      onChange={(val) => form.setFieldsValue({ departure: val })}
+                      filterOption={false}
+                      style={{ width: '100%' }}
+                    >
+                      <Input placeholder="请输入出发地" prefix={<GlobalOutlined />} />
+                    </AutoComplete>
+                  ) : (
+                    <Input
+                      placeholder="请输入出发地"
+                      prefix={<GlobalOutlined />}
+                      value={form.getFieldValue('departure')}
+                      onChange={(e) => form.setFieldsValue({ departure: e.target.value })}
+                    />
                   )}
                 </Form.Item>
               </Col>
@@ -1124,19 +1131,34 @@ const TravelPlanPage: React.FC = () => {
                 <Form.Item
                   name="destination"
                   label="目的地"
-                  rules={[{ required: true, message: '请输入目的地' }]}
+                  rules={[
+                    { required: true, message: '请输入目的地' },
+                    {
+                      validator: (_, value) => {
+                        if (typeof value === 'string' && value.trim().length > 0) return Promise.resolve();
+                        return Promise.reject(new Error('请输入目的地'));
+                      }
+                    }
+                  ]}
                 >
-                  <AutoComplete
-                    options={destOptions}
-                    onSearch={handleSearchDestination}
-                    onSelect={(val) => form.setFieldsValue({ destination: val })}
-                    filterOption={false}
-                    style={{ width: '100%' }}
-                  >
-                    <Input placeholder="请输入目的地" prefix={<GlobalOutlined />} />
-                  </AutoComplete>
-                  {!tipsEnabled && (
-                    <Text type="secondary">已关闭自动提示，请手动输入</Text>
+                  {tipsEnabled ? (
+                    <AutoComplete
+                      options={destOptions}
+                      onSearch={handleSearchDestination}
+                      onSelect={(val) => form.setFieldsValue({ destination: val })}
+                      onChange={(val) => form.setFieldsValue({ destination: val })}
+                      filterOption={false}
+                      style={{ width: '100%' }}
+                    >
+                      <Input placeholder="请输入目的地" prefix={<GlobalOutlined />} />
+                    </AutoComplete>
+                  ) : (
+                    <Input
+                      placeholder="请输入目的地"
+                      prefix={<GlobalOutlined />}
+                      value={form.getFieldValue('destination')}
+                      onChange={(e) => form.setFieldsValue({ destination: e.target.value })}
+                    />
                   )}
                 </Form.Item>
               </Col>
