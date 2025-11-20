@@ -913,12 +913,28 @@ const PlanDetailPage: React.FC = () => {
           const data = await respPrivate.json();
           setIsPublicView(false);
           setPlanDetail(data);
+          try {
+            const idx = (Array.isArray(data.generated_plans) && data.selected_plan)
+              ? data.generated_plans.findIndex((p: any) => (
+                  (p?.title === data.selected_plan?.title) && (p?.type === data.selected_plan?.type)
+                ))
+              : 0;
+            setSelectedPlanIndex(idx >= 0 ? idx : 0);
+          } catch {}
         } else if (respPrivate.status === 403 || respPrivate.status === 404) {
           const respPublic = await fetch(buildApiUrl(API_ENDPOINTS.TRAVEL_PLAN_PUBLIC_DETAIL(planId)));
           if (respPublic.ok) {
             const data = await respPublic.json();
             setIsPublicView(true);
             setPlanDetail(data);
+            try {
+              const idx = (Array.isArray(data.generated_plans) && data.selected_plan)
+                ? data.generated_plans.findIndex((p: any) => (
+                    (p?.title === data.selected_plan?.title) && (p?.type === data.selected_plan?.type)
+                  ))
+                : 0;
+              setSelectedPlanIndex(idx >= 0 ? idx : 0);
+            } catch {}
           } else {
             throw new Error(`获取计划公开详情失败 (${respPublic.status})`);
           }
@@ -932,6 +948,14 @@ const PlanDetailPage: React.FC = () => {
         const data = await respPublic.json();
         setIsPublicView(true);
         setPlanDetail(data);
+        try {
+          const idx = (Array.isArray(data.generated_plans) && data.selected_plan)
+            ? data.generated_plans.findIndex((p: any) => (
+                (p?.title === data.selected_plan?.title) && (p?.type === data.selected_plan?.type)
+              ))
+            : 0;
+          setSelectedPlanIndex(idx >= 0 ? idx : 0);
+        } catch {}
       }
     } catch (error) {
       console.error('获取计划详情失败:', error);

@@ -77,9 +77,25 @@ class AgentService:
             # 6. 方案评分和排序
             logger.info("开始方案评分和排序...")
             scored_plans = await self._score_plans(generated_plans, plan, preferences)
-            
+            if not scored_plans:
+                fallback_plans = await self.plan_generator._generate_traditional_plans(processed_data, plan, preferences, raw_data)
+                if fallback_plans:
+                    scored_plans = await self._score_plans(fallback_plans, plan, preferences)
+                else:
+                    await self._update_plan_status(plan_id, "failed")
+                    try:
+                        await self.data_collector.close()
+                    except Exception:
+                        pass
+                    return False
+
             # 7. 保存结果
             await self._save_generated_plans(plan_id, scored_plans)
+            try:
+                if scored_plans:
+                    await self._set_selected_plan_default(plan_id, scored_plans[0])
+            except Exception:
+                pass
             
             # 8. 更新状态为完成
             await self._update_plan_status(plan_id, "completed")
@@ -333,6 +349,19 @@ class AgentService:
             await session.commit()
             
     
+    async def _set_selected_plan_default(self, plan_id: int, plan_data: Dict[str, Any]):
+        from sqlalchemy import update
+        from app.models.travel_plan import TravelPlan
+        from app.core.database import async_session
+        serialized = self._serialize_for_json(plan_data)
+        async with async_session() as session:
+            await session.execute(
+                update(TravelPlan)
+                .where(TravelPlan.id == plan_id)
+                .values(selected_plan=serialized)
+            )
+            await session.commit()
+
     async def refine_plan(
         self, 
         plan_id: int, 

@@ -136,7 +136,7 @@ async def get_public_travel_plan(
     plan = await service.get_public_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="公开旅行计划不存在")
-    return plan
+    return TravelPlanResponse.from_orm(plan)
 
 @router.put("/{plan_id}/publish")
 async def publish_travel_plan(
@@ -186,7 +186,7 @@ async def get_travel_plan(
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
         raise HTTPException(status_code=403, detail="无权访问该计划")
-    return plan
+    return TravelPlanResponse.from_orm(plan)
 
 
 @router.put("/{plan_id}", response_model=TravelPlanResponse)
