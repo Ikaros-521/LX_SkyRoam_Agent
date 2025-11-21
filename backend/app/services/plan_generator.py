@@ -145,7 +145,8 @@ class PlanGenerator:
                     raise Exception("OpenAI API密钥未配置")
                 
                 # 根据偏好情况选择生成策略
-                if use_split_strategy:
+                # if use_split_strategy:
+                if False:
                     logger.info("使用拆分偏好策略生成方案")
                     # 设置超时
                     llm_plans = await asyncio.wait_for(
@@ -2059,7 +2060,10 @@ class PlanGenerator:
 - 目的地：{plan.destination}
 - 人数：{(preferences or {}).get('travelers', getattr(plan, 'travelers', 1))}
 - 当日预算：{budget_info}
-- 年龄群体：{(preferences or {}).get('ageGroups', '未指定')}
+- 年龄群体：{', '.join((preferences or {}).get('ageGroups', [])) if (preferences or {}).get('ageGroups') else '未指定'}
+- 饮食偏好：{', '.join((preferences or {}).get('foodPreferences', [])) if (preferences or {}).get('foodPreferences') else '无特殊偏好'}
+- 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
+- 活动偏好：{', '.join((preferences or {}).get('activity_preference', [])) if (preferences or {}).get('activity_preference') else '未指定'}
 - 特殊要求：{plan.requirements or '无'}
 
 可用航班数据：
@@ -2074,7 +2078,7 @@ class PlanGenerator:
 请返回JSON对象，包含字段{{
   "day": {day},
   "date": "{date_str}",
-  "flight": {{}},  # 如当日无航班可为空
+  "flight": {{}},
   "hotel": {{}},
   "daily_cost": 参考费用,
   "accommodation_highlights": ["亮点1", "亮点2"],
@@ -2166,8 +2170,10 @@ class PlanGenerator:
 请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的餐饮方案：
 - 目的地：{plan.destination}
 - 当日预算：{budget_info}
-- 人数及偏好：{preferences or '无'}
-- 特殊饮食要求：{(preferences or {}).get('dietaryRestrictions') if preferences else '无'}
+- 人数：{(preferences or {}).get('travelers', getattr(plan, 'travelers', 1))}
+- 年龄群体：{', '.join((preferences or {}).get('ageGroups', [])) if (preferences or {}).get('ageGroups') else '未指定'}
+- 饮食偏好：{', '.join((preferences or {}).get('foodPreferences', [])) if (preferences or {}).get('foodPreferences') else '无特殊偏好'}
+- 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 
 可用餐厅数据：
 {self._format_data_for_llm(restaurants_data, 'restaurant')}
@@ -2244,6 +2250,8 @@ class PlanGenerator:
 - 出行方式偏好：{plan.transportation or '未指定'}
 - 预算：{plan.budget or '未指定'}元
 - 人数：{(preferences or {}).get('travelers', getattr(plan, 'travelers', 1))}
+- 年龄群体：{', '.join((preferences or {}).get('ageGroups', [])) if (preferences or {}).get('ageGroups') else '未指定'}
+- 活动偏好：{', '.join((preferences or {}).get('activity_preference', [])) if (preferences or {}).get('activity_preference') else '未指定'}
 
 可用交通数据：
 {self._format_data_for_llm(transportation_data, 'transportation')}
@@ -2328,8 +2336,11 @@ class PlanGenerator:
 请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的景点游览方案：
 - 目的地：{plan.destination}
 - 当日预算：{budget_info}
+- 人数：{(preferences or {}).get('travelers', getattr(plan, 'travelers', 1))}
+- 年龄群体：{', '.join((preferences or {}).get('ageGroups', [])) if (preferences or {}).get('ageGroups') else '未指定'}
+- 活动偏好：{', '.join((preferences or {}).get('activity_preference', [])) if (preferences or {}).get('activity_preference') else '未指定'}
+- 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 - 特殊要求：{plan.requirements or '无'}
-- 偏好：{preferences or '无'}
 
 真实景点数据：
 {self._format_data_for_llm(attractions_data, 'attraction')}
