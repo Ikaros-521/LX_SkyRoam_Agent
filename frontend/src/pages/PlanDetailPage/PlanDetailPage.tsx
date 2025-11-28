@@ -1238,7 +1238,7 @@ const PlanDetailPage: React.FC = () => {
       </Card>
 
       {/* 方案选择 */}
-      {planDetail.generated_plans && planDetail.generated_plans.length > 1 && (
+      {planDetail.generated_plans && Array.isArray(planDetail.generated_plans) && planDetail.generated_plans.length > 1 && (
         <Card title="选择方案" className="glass-card" style={{ marginBottom: '24px' }}>
           <Row gutter={[16, 16]}>
             {planDetail.generated_plans.map((plan, index) => (
@@ -1287,7 +1287,15 @@ const PlanDetailPage: React.FC = () => {
       )}
 
       {/* 方案详情 */}
-      {currentPlan && (
+      {planDetail.status === 'generating' ? (
+        <Card style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: '24px' }}>
+            <Title level={4}>方案生成中</Title>
+            <Text type="secondary">AI正在为您生成旅行方案，请稍候...</Text>
+          </div>
+        </Card>
+      ) : currentPlan ? (
         <Tabs defaultActiveKey="overview" style={{ marginBottom: '24px' }}>
           <TabPane tab="方案概览" key="overview">
             <Row gutter={[24, 24]}>
@@ -1298,23 +1306,29 @@ const PlanDetailPage: React.FC = () => {
 
                       <Collapse
                         bordered={false}
-                        defaultActiveKey={currentPlan.daily_itineraries?.slice(0, 1).map((day: DailyItinerary, idx: number) => `day-${day.day ?? idx}`)}
+                        defaultActiveKey={Array.isArray(currentPlan.daily_itineraries) && currentPlan.daily_itineraries.length > 0
+                          ? currentPlan.daily_itineraries.slice(0, 1).map((day: DailyItinerary, idx: number) => `day-${day.day ?? idx}`)
+                          : []}
                       >
-                        {currentPlan.daily_itineraries.map((day: DailyItinerary, index: number) => (
+                        {Array.isArray(currentPlan.daily_itineraries) && currentPlan.daily_itineraries.length > 0 ? (
+                          currentPlan.daily_itineraries.map((day: DailyItinerary, index: number) => (
                           <Collapse.Panel
                             key={`day-${day.day ?? index}`}
                             header={<ItineraryPanelHeader day={day} />}
                           >
                             <DailyItineraryCard day={day} />
                           </Collapse.Panel>
-                        ))}
+                          ))
+                        ) : (
+                          <Alert type="info" message="暂无行程安排" showIcon />
+                        )}
                       </Collapse>
                     </TabPane>
                     <TabPane tab="餐厅" key="restaurants">
                       <Card title={<Space><ShopOutlined /><span>推荐餐厅</span></Space>} size="small" className="glass-card">
                         <List
                           size="small"
-                          dataSource={currentPlan.restaurants}
+                          dataSource={Array.isArray(currentPlan.restaurants) ? currentPlan.restaurants : []}
                           renderItem={(restaurant: any) => (
                             <List.Item style={{ padding: '12px 0' }}>
                               <RestaurantCard restaurant={restaurant} />
@@ -1403,7 +1417,7 @@ const PlanDetailPage: React.FC = () => {
                           <Text type="secondary">暂无酒店信息</Text>
                         )}
 
-                        {currentPlan.hotel?.available_options && currentPlan.hotel.available_options.length > 1 && (
+                        {Array.isArray(currentPlan.hotel?.available_options) && currentPlan.hotel.available_options.length > 1 && (
                           <Card 
                             size="small" 
                             className="glass-card"
@@ -1615,7 +1629,7 @@ const PlanDetailPage: React.FC = () => {
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   {/* 笔记精选 / 图片速览 */}
                   <Card title="笔记精选 / 图片速览" size="small">
-                    {currentPlan.xiaohongshu_notes && currentPlan.xiaohongshu_notes.length > 0 ? (
+                    {Array.isArray(currentPlan.xiaohongshu_notes) && currentPlan.xiaohongshu_notes.length > 0 ? (
                       <Space direction="vertical" size="small" style={{ width: '100%' }}>
                         <Row gutter={[8, 8]}>
                           {currentPlan.xiaohongshu_notes.slice(0, 8).map((note: any, idx: number) => (
@@ -1769,7 +1783,7 @@ const PlanDetailPage: React.FC = () => {
                             )}
 
                             {/* 多天天气预报 */}
-                            {currentPlan.weather_info.raw_data.forecast && currentPlan.weather_info.raw_data.forecast.length > 0 && (
+                            {Array.isArray(currentPlan.weather_info.raw_data.forecast) && currentPlan.weather_info.raw_data.forecast.length > 0 && (
                               <div style={{ marginBottom: '12px' }}>
                                 {currentPlan.weather_info.raw_data.forecast.map((day: any, index: number) => (
                                   <div key={index} className={`forecast-item ${getWeatherClass(day.dayweather || '')} ${index === 0 ? 'highlight' : ''}`}>
@@ -1848,7 +1862,7 @@ const PlanDetailPage: React.FC = () => {
                         )}
                         
                         {/* 旅游建议 */}
-                        {currentPlan.weather_info.travel_recommendations && currentPlan.weather_info.travel_recommendations.length > 0 && (
+                        {Array.isArray(currentPlan.weather_info.travel_recommendations) && currentPlan.weather_info.travel_recommendations.length > 0 && (
                           <div>
                             <Divider style={{ margin: '12px 0' }} />
                             <Text strong style={{ color: '#52c41a' }}>
@@ -1909,6 +1923,15 @@ const PlanDetailPage: React.FC = () => {
           </TabPane>
 
         </Tabs>
+      ) : (
+        <Card style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <Alert
+            message="暂无方案数据"
+            description="该计划还没有生成方案，或者方案数据尚未加载完成。"
+            type="info"
+            showIcon
+          />
+        </Card>
       )}
 
       {/* 导出模态框 */}
