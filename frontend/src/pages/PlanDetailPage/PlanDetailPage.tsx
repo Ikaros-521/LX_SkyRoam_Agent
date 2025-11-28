@@ -895,6 +895,7 @@ const PlanDetailPage: React.FC = () => {
   const [isPublicView, setIsPublicView] = useState<boolean>(!getToken());
   const [publishing, setPublishing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const planStatus = planDetail?.status;
 
   const fetchPlanDetail = useCallback(async () => {
     try {
@@ -981,6 +982,15 @@ const PlanDetailPage: React.FC = () => {
   useEffect(() => {
     fetchPlanDetail();
   }, [fetchPlanDetail]);
+
+  // 如果方案仍在生成中，则定时轮询详情，直到状态更新
+  useEffect(() => {
+    if (planStatus !== 'generating') return;
+    const interval = setInterval(() => {
+      fetchPlanDetail();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [planStatus, fetchPlanDetail]);
 
   // 新增：当计划详情加载完成后获取评分信息（公开视图不请求）
   useEffect(() => {
