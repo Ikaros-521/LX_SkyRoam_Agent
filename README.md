@@ -132,7 +132,7 @@ cp .env.example .env
 5. 启动服务
 ```bash
 # 启动后端
-cd backend && uvicorn main:app --reload
+cd backend && uvicorn main:app
 
 # 启动Celery Worker
 cd backend && celery -A app.core.celery worker --loglevel=info
@@ -147,6 +147,10 @@ cd backend && python mcp_http_server_amap.py
 cd backend && python xhs_api_server.py
 
 ```
+
+### Windows 一键启动
+
+- 运行根目录中的 `start-all-win.bat`，脚本会自动激活 `skyroam` Conda 环境，并在独立窗口中依次启动 FastAPI、Celery、前端、高德 API 以及小红书服务。
 
 ## 使用说明
 
