@@ -25,9 +25,14 @@ async def register(user_in: UserRegister, db: AsyncSession = Depends(get_async_d
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="用户名或邮箱已存在")
 
+    # 如果 email 为 None，生成一个默认的 email（使用 example.com 作为示例域名）
+    email = user_in.email
+    if email is None:
+        email = f"{user_in.username}@example.com"
+
     user = User(
         username=user_in.username,
-        email=user_in.email,  # 可为 None
+        email=email,
         full_name=user_in.full_name,
         hashed_password=get_password_hash(user_in.password),
         role='user',
