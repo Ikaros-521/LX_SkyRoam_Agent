@@ -555,12 +555,27 @@ const DestinationsPage: React.FC = () => {
 };
 
 export default DestinationsPage;
-const toSlug = (name: string) =>
-  name.trim().replace(/\s+/g, '-');
-const resolveLocalImage = (d: Destination) =>
-  `/static/images/destinations/${toSlug(d.name)}.jpg`;
-const getFallbackImage = (d: Destination) => {
+
+// 将目的地名称转换为文件名（支持中文）
+const toImageFileName = (name: string): string => {
+  return name.trim();
+};
+
+// 获取本地图片路径（优先）
+const resolveLocalImage = (d: Destination): string => {
+  const fileName = toImageFileName(d.name);
+  return `/static/images/destinations/${encodeURIComponent(fileName)}.jpg`;
+};
+
+// 获取备用图片（优先级：API返回的图片 > 随机图片）
+const getFallbackImage = (d: Destination): string => {
+  // 优先使用 API 返回的图片
   const imgs = Array.isArray(d.images) ? d.images : [];
   const first = imgs.find((u) => typeof u === 'string' && u.length > 0);
-  return first || `https://picsum.photos/seed/${toSlug(d.name)}/800/600`;
+  if (first) {
+    return first;
+  }
+  // 最后使用随机图片作为兜底
+  const fileName = toImageFileName(d.name);
+  return `https://picsum.photos/seed/${encodeURIComponent(fileName)}/800/600`;
 };
