@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Card, List, Typography, Space, Tag, Button, Row, Col, Empty, Spin, Pagination, Input, Select, DatePicker, Rate, Tabs, Alert } from 'antd';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Card, Typography, Space, Tag, Button, Row, Col, Empty, Spin, Pagination, Input, Select, DatePicker, Rate, Tabs, Alert } from 'antd';
 import { CalendarOutlined, EnvironmentOutlined, EyeOutlined, DeleteOutlined, EditOutlined, HistoryOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -64,7 +64,6 @@ const PlansLibraryPage: React.FC = () => {
   const [myCurrentPage, setMyCurrentPage] = useState(1);
   const [myTotal, setMyTotal] = useState(0);
   const [myKeyword, setMyKeyword] = useState<string>('');
-  const [myKeywordInput, setMyKeywordInput] = useState<string>('');
   const [myMinScore, setMyMinScore] = useState<number | undefined>();
   const [myDateRange, setMyDateRange] = useState<any[]>([]);
 
@@ -76,7 +75,6 @@ const PlansLibraryPage: React.FC = () => {
   const [pubCurrentPage, setPubCurrentPage] = useState(1);
   const [pubTotal, setPubTotal] = useState(0);
   const [pubKeyword, setPubKeyword] = useState<string>('');
-  const [pubKeywordInput, setPubKeywordInput] = useState<string>('');
   const [pubMinScore, setPubMinScore] = useState<number | undefined>();
   const [pubDateRange, setPubDateRange] = useState<any[]>([]);
 
@@ -84,7 +82,9 @@ const PlansLibraryPage: React.FC = () => {
     if (activeTab === 'my') fetchMyPlans();
     if (activeTab === 'public') fetchPublicPlans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, myCurrentPage, myKeyword, myMinScore, myDateRange, pubCurrentPage, pubKeyword, pubMinScore, pubDateRange]);
+  }, [activeTab, myCurrentPage, myMinScore, myDateRange, pubCurrentPage, pubMinScore, pubDateRange]);
+  
+  // 注意：keyword 不在依赖中，只在用户点击搜索按钮时才会更新并触发搜索
 
   const toDateStr = (d: any): string => {
     if (!d) return '';
@@ -95,7 +95,7 @@ const PlansLibraryPage: React.FC = () => {
     } catch { return ''; }
   };
 
-  const fetchMyPlans = async () => {
+  const fetchMyPlans = async (keywordOverride?: string) => {
     const reqId = ++myLatestReq.current;
     try {
       setMyLoading(true);
@@ -107,7 +107,9 @@ const PlansLibraryPage: React.FC = () => {
       const params = new URLSearchParams();
       params.set('skip', String((myCurrentPage - 1) * myPageSize));
       params.set('limit', String(myPageSize));
-      if (myKeyword && myKeyword.trim()) params.set('keyword', myKeyword.trim());
+      // 优先使用传入的 keyword，否则使用状态中的 keyword
+      const keywordToUse = keywordOverride !== undefined ? keywordOverride : myKeyword;
+      if (keywordToUse && keywordToUse.trim()) params.set('keyword', keywordToUse.trim());
       if (typeof myMinScore === 'number') params.set('min_score', String(myMinScore));
       if (myDateRange && myDateRange.length === 2 && myDateRange[0] && myDateRange[1]) {
         const fromStr = toDateStr(myDateRange[0]);
@@ -132,14 +134,16 @@ const PlansLibraryPage: React.FC = () => {
     }
   };
 
-  const fetchPublicPlans = async () => {
+  const fetchPublicPlans = async (keywordOverride?: string) => {
     const reqId = ++pubLatestReq.current;
     try {
       setPubLoading(true);
       const params = new URLSearchParams();
       params.set('skip', String((pubCurrentPage - 1) * pubPageSize));
       params.set('limit', String(pubPageSize));
-      if (pubKeyword && pubKeyword.trim()) params.set('keyword', pubKeyword.trim());
+      // 优先使用传入的 keyword，否则使用状态中的 keyword
+      const keywordToUse = keywordOverride !== undefined ? keywordOverride : pubKeyword;
+      if (keywordToUse && keywordToUse.trim()) params.set('keyword', keywordToUse.trim());
       if (typeof pubMinScore === 'number') params.set('min_score', String(pubMinScore));
       if (pubDateRange && pubDateRange.length === 2 && pubDateRange[0] && pubDateRange[1]) {
         const fromStr = toDateStr(pubDateRange[0]);
@@ -230,44 +234,93 @@ const PlansLibraryPage: React.FC = () => {
     }
   };
 
-  const FilterBar = (props: {
-    keyword: string; keywordInput: string; setKeyword: (v: string) => void; setKeywordInput: (v: string) => void;
+  const FilterBar = React.memo((props: {
+    keyword: string; setKeyword: (v: string) => void;
     minScore?: number; setMinScore: (v: number | undefined) => void;
     dateRange: any[]; setDateRange: (v: any[]) => void;
     onReset: () => void;
-  }) => (
-    <Card style={{ marginBottom: 16 }}>
-      <Space wrap size="middle">
-        <Input.Search
-          placeholder="关键词（标题/目的地/描述）"
-          allowClear
-          style={{ width: 280 }}
-          value={props.keywordInput}
-          onChange={(e) => props.setKeywordInput(e.target.value)}
-          onSearch={(v) => { const t = v.trim(); props.setKeyword(t); props.setKeywordInput(t); }}
-        />
-        <Select
-          placeholder="评分"
-          allowClear
-          style={{ width: 160 }}
-          value={props.minScore}
-          onChange={(v) => props.setMinScore(v as number | undefined)}
-          options={[
-            { value: 1, label: '1星及以上' },
-            { value: 2, label: '2星及以上' },
-            { value: 3, label: '3星及以上' },
-            { value: 4, label: '4星及以上' },
-            { value: 5, label: '5星' },
-          ]}
-        />
-        <DatePicker.RangePicker
-          value={props.dateRange as any}
-          onChange={(range) => props.setDateRange(range || [])}
-        />
-        <Button onClick={props.onReset}>重置</Button>
-      </Space>
-    </Card>
-  );
+    onSearch: (keyword: string) => void;
+  }) => {
+    const { setKeyword, setMinScore, setDateRange, onReset, onSearch } = props;
+    
+    // 完全独立的本地输入状态，不依赖外部 keyword
+    const [localInput, setLocalInput] = useState('');
+    
+    const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      setLocalInput(e.target.value);
+    }, []);
+
+    const handleSearch = useCallback((value: string) => {
+      // 使用 onSearch 传入的值，而不是 localInput（避免闭包问题）
+      const t = (value || localInput).trim();
+      setKeyword(t);
+      setLocalInput(t);
+      // 手动触发搜索，直接传递最新的 keyword 值，避免状态更新延迟问题
+      onSearch(t);
+    }, [localInput, setKeyword, onSearch]);
+
+    const handleScoreChange = useCallback((v: number | undefined) => {
+      setMinScore(v);
+    }, [setMinScore]);
+
+    const handleDateRangeChange = useCallback((range: any) => {
+      setDateRange(range || []);
+    }, [setDateRange]);
+
+    const handleReset = useCallback(() => {
+      setLocalInput('');
+      onReset();
+    }, [onReset]);
+
+    return (
+      <Card style={{ marginBottom: 16 }}>
+        <Space wrap size="middle">
+          <Input.Search
+            placeholder="关键词（标题/目的地/描述）"
+            allowClear
+            style={{ width: 280 }}
+            value={localInput}
+            onChange={handleSearchChange}
+            onSearch={handleSearch}
+            enterButton
+          />
+          <Select
+            placeholder="评分"
+            allowClear
+            style={{ width: 160 }}
+            value={props.minScore}
+            onChange={handleScoreChange}
+            options={[
+              { value: 1, label: '1星及以上' },
+              { value: 2, label: '2星及以上' },
+              { value: 3, label: '3星及以上' },
+              { value: 4, label: '4星及以上' },
+              { value: 5, label: '5星' },
+            ]}
+          />
+          <DatePicker.RangePicker
+            value={props.dateRange as any}
+            onChange={handleDateRangeChange}
+          />
+          <Button onClick={handleReset}>重置</Button>
+        </Space>
+      </Card>
+    );
+  });
+
+  const myResetHandler = useCallback(() => {
+    setMyKeyword('');
+    setMyMinScore(undefined);
+    setMyDateRange([]);
+    setMyCurrentPage(1);
+  }, []);
+
+  const pubResetHandler = useCallback(() => {
+    setPubKeyword('');
+    setPubMinScore(undefined);
+    setPubDateRange([]);
+    setPubCurrentPage(1);
+  }, []);
 
   const renderTabContent = (tab: TabKey) => {
     const list = tab === 'my' ? myPlans : pubPlans;
@@ -275,16 +328,19 @@ const PlansLibraryPage: React.FC = () => {
     const total = tab === 'my' ? myTotal : pubTotal;
     const currentPage = tab === 'my' ? myCurrentPage : pubCurrentPage;
     const setPage = tab === 'my' ? setMyCurrentPage : setPubCurrentPage;
+    // FilterBar 内部管理输入状态，所以这里创建新对象不会导致重新渲染
     const filterProps = tab === 'my' ? {
-      keyword: myKeyword, keywordInput: myKeywordInput, setKeyword: setMyKeyword, setKeywordInput: setMyKeywordInput,
+      keyword: myKeyword, setKeyword: setMyKeyword,
       minScore: myMinScore, setMinScore: setMyMinScore,
       dateRange: myDateRange, setDateRange: setMyDateRange,
-      onReset: () => { setMyKeyword(''); setMyKeywordInput(''); setMyMinScore(undefined); setMyDateRange([]); setMyCurrentPage(1); }
+      onReset: myResetHandler,
+      onSearch: (keyword: string) => fetchMyPlans(keyword)
     } : {
-      keyword: pubKeyword, keywordInput: pubKeywordInput, setKeyword: setPubKeyword, setKeywordInput: setPubKeywordInput,
+      keyword: pubKeyword, setKeyword: setPubKeyword,
       minScore: pubMinScore, setMinScore: setPubMinScore,
       dateRange: pubDateRange, setDateRange: setPubDateRange,
-      onReset: () => { setPubKeyword(''); setPubKeywordInput(''); setPubMinScore(undefined); setPubDateRange([]); setPubCurrentPage(1); }
+      onReset: pubResetHandler,
+      onSearch: (keyword: string) => fetchPublicPlans(keyword)
     };
 
     if (tab === 'my' && !token) {
