@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Card, Row, Col, Typography, Input, Space, Tag, Modal, List, Button, Spin, Empty, Carousel, Select, DatePicker } from 'antd';
+import { Card, Row, Col, Typography, Input, Space, Tag, Modal, List, Button, Spin, Empty, Carousel, Select, DatePicker, Image } from 'antd';
 import { GlobalOutlined, SearchOutlined, EnvironmentOutlined, CalendarOutlined, DollarOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -14,9 +14,11 @@ interface LazyImageProps {
   height?: number;
   style?: React.CSSProperties;
   onError?: (e: React.SyntheticEvent<HTMLImageElement, Event>) => void;
+  enablePreview?: boolean; // 是否启用预览功能
+  onImageClick?: (e: React.MouseEvent) => void; // 图片点击事件（用于阻止冒泡）
 }
 
-const LazyImage: React.FC<LazyImageProps> = ({ candidates, fallback, alt, height, style, onError }) => {
+const LazyImage: React.FC<LazyImageProps> = ({ candidates, fallback, alt, height, style, onError, enablePreview = false, onImageClick }) => {
   const [isInView, setIsInView] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [imgSrc, setImgSrc] = useState<string | null>(null);
@@ -137,12 +139,51 @@ const LazyImage: React.FC<LazyImageProps> = ({ candidates, fallback, alt, height
           <Text type="secondary">图片加载失败</Text>
         </div>
       ) : currentSrc && imgSrc ? (
-        <img
-          src={imgSrc}
-          alt={alt}
-          style={imageStyle}
-          onError={handleImageError}
-        />
+        enablePreview ? (
+          <div 
+            onClick={(e) => {
+              e.stopPropagation(); // 阻止事件冒泡到卡片
+            }}
+            style={{ 
+              width: '100%', 
+              height: '100%', 
+              display: 'block', 
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+            className="destination-image-container"
+          >
+            <Image
+              src={imgSrc}
+              alt={alt}
+              height={height}
+              style={{ 
+                width: '100%',
+                height: '100%',
+                display: 'block',
+                ...imageStyle
+              }}
+              preview={{
+                src: imgSrc,
+                mask: <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#fff', fontSize: '14px' }}>点击预览</div>
+              }}
+              onError={handleImageError}
+            />
+          </div>
+        ) : (
+          <img
+            src={imgSrc}
+            alt={alt}
+            style={imageStyle}
+            onError={handleImageError}
+            onClick={(e) => {
+              e.stopPropagation(); // 阻止事件冒泡
+              if (onImageClick) {
+                onImageClick(e);
+              }
+            }}
+          />
+        )
       ) : (
         <div style={{ height, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
           <Spin size="small" />
@@ -468,6 +509,20 @@ const DestinationsPage: React.FC = () => {
 
   return (
     <div className="destinations-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <style>{`
+        .destination-image-container .ant-image {
+          width: 100% !important;
+          height: 100% !important;
+          display: block !important;
+        }
+        .destination-image-container .ant-image-img {
+          width: 100% !important;
+          min-width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          display: block !important;
+        }
+      `}</style>
       <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <Title level={2}><GlobalOutlined /> 探索热门目的地</Title>
         <Paragraph type="secondary">点击任一目的地，即刻查看该地的相关旅行方案，并在弹窗内进行二级检索</Paragraph>
@@ -554,7 +609,6 @@ const DestinationsPage: React.FC = () => {
                   hoverable
                   className="glass-card"
                   style={{ borderRadius: 12, overflow: 'hidden' }}
-                  onClick={() => openPlansModal(d)}
                   cover={(
                     <LazyImage
                       candidates={getAllImageCandidates(d)}
@@ -562,10 +616,16 @@ const DestinationsPage: React.FC = () => {
                       alt={d.name}
                       height={160}
                       style={{ objectFit: 'cover', borderTopLeftRadius: 12, borderTopRightRadius: 12, borderRadius: 0 }}
+                      enablePreview={true}
                     />
                   )}
                 >
-                  <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                  <Space 
+                    direction="vertical" 
+                    size={6} 
+                    style={{ width: '100%', cursor: 'pointer' }}
+                    onClick={() => openPlansModal(d)}
+                  >
                     <Title level={4} style={{ margin: 0 }}>{d.name}</Title>
                     <Text>
                       <EnvironmentOutlined /> {d.country || '未知'}{d.city ? ` · ${d.city}` : ''}
