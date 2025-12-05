@@ -5,7 +5,8 @@ import {
   ArrowRightOutlined,
   ThunderboltOutlined,
   ZoomInOutlined,
-  StarOutlined
+  StarOutlined,
+  GithubOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import './HomePage.css';
@@ -112,6 +113,14 @@ const HomePage: React.FC = () => {
               onClick={() => navigate('/plans?tab=public')}
             >
               查看演示
+            </Button>
+            <Button
+              size="large"
+              className="btn-secondary"
+              icon={<GithubOutlined />}
+              onClick={() => window.open('https://github.com/Ikaros-521/LX_SkyRoam_Agent', '_blank')}
+            >
+              获取源码
             </Button>
           </Space>
 
