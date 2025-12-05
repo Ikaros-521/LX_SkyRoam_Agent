@@ -129,9 +129,31 @@ class PlanGenerator:
     """方案生成器"""
     
     def __init__(self):
+        # 最大可生成的完整方案数量（全局上限）
         self.max_plans = 5
-        self.min_attractions_per_day = 2
-        self.max_attractions_per_day = 4
+        # 按天的景点数量控制，默认值可通过 settings 覆盖，便于根据业务调节
+        self.min_attractions_per_day = int(
+            getattr(settings, "PLAN_MIN_ATTRACTIONS_PER_DAY", 2)
+        )
+        self.max_attractions_per_day = int(
+            getattr(settings, "PLAN_MAX_ATTRACTIONS_PER_DAY", 4)
+        )
+        # 单日用餐次数 / 单次行程的酒店候选数量
+        self.min_meals_per_day = int(
+            getattr(settings, "PLAN_MIN_MEALS_PER_DAY", 3)
+        )
+        self.max_hotels_per_trip = int(
+            getattr(settings, "PLAN_MAX_HOTELS_PER_TRIP", 5)
+        )
+
+        # 是否根据数据丰富度动态调整“备选方案数量”
+        self.dynamic_plan_count_enabled: bool = bool(
+            getattr(settings, "PLAN_DYNAMIC_PLAN_COUNT_ENABLED", True)
+        )
+        self.min_attraction_richness_for_multi_plans: float = float(
+            getattr(settings, "PLAN_MIN_ATTRACTION_RICHNESS_FOR_MULTI_PLANS", 0.7)
+        )
+
         self.max_segment_days = getattr(settings, "PLAN_MAX_SEGMENT_DAYS", 10)
         # 延迟导入避免循环依赖
         self._data_collector = None

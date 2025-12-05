@@ -147,6 +147,28 @@ class Settings(BaseSettings):
         "transportation"
     ]
 
+    # 旅行计划生成 - 按天动态控制相关参数（可通过环境变量覆盖）
+    # 单日期望的最少景点数 / 最大景点数，用于控制行程密度和数据需求估算
+    PLAN_MIN_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MIN_ATTRACTIONS_PER_DAY", "2"))
+    PLAN_MAX_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MAX_ATTRACTIONS_PER_DAY", "4"))
+
+    # 单日期望的用餐次数（用于估算需要多少餐厅数据，例如 3 = 早/中/晚）
+    PLAN_MIN_MEALS_PER_DAY: int = int(os.getenv("PLAN_MIN_MEALS_PER_DAY", "3"))
+
+    # 每次行程期望的酒店候选数量（通常 1~3 家就足够）
+    PLAN_MAX_HOTELS_PER_TRIP: int = int(os.getenv("PLAN_MAX_HOTELS_PER_TRIP", "5"))
+
+    # 在数据较少的情况下是否启用“动态降级方案数量”的逻辑
+    PLAN_DYNAMIC_PLAN_COUNT_ENABLED: bool = os.getenv(
+        "PLAN_DYNAMIC_PLAN_COUNT_ENABLED", "true"
+    ).lower() == "true"
+
+    # 允许生成多方案时，所需的“景点丰富度”下限（0~1，越高要求越严格）
+    # 例如 0.7 表示：唯一景点总数 >= 0.7 * (天数 * PLAN_MIN_ATTRACTIONS_PER_DAY) 才认为数据足够多，可以安全生成多个备选方案
+    PLAN_MIN_ATTRACTION_RICHNESS_FOR_MULTI_PLANS: float = float(
+        os.getenv("PLAN_MIN_ATTRACTION_RICHNESS_FOR_MULTI_PLANS", "0.7")
+    )
+
     # 评分权重配置
     SCORING_WEIGHTS: dict = {
         "price": 0.3,

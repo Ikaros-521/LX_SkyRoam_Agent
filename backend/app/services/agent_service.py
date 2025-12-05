@@ -156,12 +156,19 @@ class AgentService:
         
         logger.info(f"开始收集 {plan.destination} 的各类数据（每个任务间隔 {interval_seconds}s 启动）")
 
+        # 估算行程天数，用于动态控制原始数据量
+        try:
+            days = (plan.end_date - plan.start_date).days + 1
+        except Exception:
+            days = getattr(plan, "duration_days", None) or 1
+        days = max(int(days), 1)
+
         # 将任务与对应的section键关联，便于增量更新（缺少出发地则跳过航班与交通）
         task_specs = [
             ("hotels", lambda: self.data_collector.collect_hotel_data(plan.destination, plan.start_date, plan.end_date)),
-            ("attractions", lambda: self.data_collector.collect_attraction_data(plan.destination)),
+            ("attractions", lambda: self.data_collector.collect_attraction_data(plan.destination, plan.start_date, plan.end_date)),
             ("weather", lambda: self.data_collector.collect_weather_data(plan.destination, plan.start_date, plan.end_date)),
-            ("restaurants", lambda: self.data_collector.collect_restaurant_data(plan.destination)),
+            ("restaurants", lambda: self.data_collector.collect_restaurant_data(plan.destination, plan.start_date, plan.end_date)),
             ("xiaohongshu_notes", lambda: self.data_collector.collect_xiaohongshu_data(plan.destination, plan.start_date, plan.end_date)),
         ]
         if plan.departure:

@@ -40,6 +40,18 @@ class DataCollector:
         )
         self.map_provider = settings.MAP_PROVIDER  # 地图服务提供商
 
+        # 基于行程天数动态控制原始数据量的参数（全部可通过 settings / 环境变量覆盖）
+        # 这些只是“期望值”，不会强行按天精确匹配，而是用于估算需要多久的数据量
+        self.plan_min_attractions_per_day = int(
+            getattr(settings, "PLAN_MIN_ATTRACTIONS_PER_DAY", 2)
+        )
+        self.plan_min_meals_per_day = int(
+            getattr(settings, "PLAN_MIN_MEALS_PER_DAY", 3)
+        )
+        self.plan_max_hotels_per_trip = int(
+            getattr(settings, "PLAN_MAX_HOTELS_PER_TRIP", 5)
+        )
+
         # asyncio.run(self.collect_xiaohongshu_data("杭州西湖"))
     
     @staticmethod
@@ -209,12 +221,16 @@ class DataCollector:
         return True
     
     async def collect_hotel_data(
-        self, 
-        destination: str, 
-        start_date: datetime, 
-        end_date: datetime
+        self,
+        destination: str,
+        start_date: datetime,
+        end_date: datetime,
     ) -> List[Dict[str, Any]]:
-        """收集酒店数据"""
+        """收集酒店数据
+
+        注意：这里不会依赖“精确坐标范围”来调整数量，而是基于行程天数，按配置估算
+        需要多少候选酒店，并在原始结果上做一个简单裁剪，避免数据过多或过少。
+        """
         try:
             cache_key_str = cache_key("hotels", destination, start_date.date(), end_date.date())
             
@@ -224,7 +240,16 @@ class DataCollector:
                 logger.info(f"使用缓存的酒店数据: {destination}")
                 return cached_data
             
-            hotel_data = []
+            hotel_data: List[Dict[str, Any]] = []
+
+            # 根据行程天数和配置，估算期望的酒店候选数量
+            try:
+                days = (end_date.date() - start_date.date()).days + 1
+            except Exception:
+                days = 1
+            days = max(days, 1)
+            # 理论上多天行程也不需要太多酒店候选，按配置取一个上限
+            desired_hotel_count = max(self.plan_max_hotels_per_trip, 1)
             
             # 优先使用高德地图周边搜索获取酒店信息
             try:
@@ -275,7 +300,7 @@ class DataCollector:
                 logger.warning(f"高德地图酒店周边搜索调用失败: {e}")
             
             # 如果数据不足，使用MCP工具补充
-            if len(hotel_data) < 10:
+            if len(hotel_data) < desired_hotel_count:
                 try:
                     mcp_data = await self.mcp_client.get_hotels(
                         destination=destination,
@@ -286,6 +311,14 @@ class DataCollector:
                     logger.info(f"从MCP服务补充 {len(mcp_data)} 条酒店数据")
                 except Exception as e:
                     logger.warning(f"MCP酒店服务调用失败: {e}")
+
+            # 最终对酒店列表做一次软裁剪，避免过多
+            if len(hotel_data) > desired_hotel_count:
+                logger.info(
+                    f"根据行程天数裁剪酒店数量: 原始 {len(hotel_data)} 条，"
+                    f"保留前 {desired_hotel_count} 条（可通过 PLAN_MAX_HOTELS_PER_TRIP 调整）"
+                )
+                hotel_data = hotel_data[:desired_hotel_count]
             
             # 缓存数据
             await set_cache(cache_key_str, hotel_data, ttl=300)  # 5分钟缓存
@@ -364,10 +397,24 @@ class DataCollector:
             else:
                 return 1
     
-    async def collect_attraction_data(self, destination: str) -> List[Dict[str, Any]]:
-        """收集景点数据"""
+    async def collect_attraction_data(
+        self,
+        destination: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        """收集景点数据
+
+        这里根据行程天数和配置，估算需要的“最少景点数量”，再结合地图/MCP结果做软裁剪或补充。
+        注意：暂时不做精确的“按坐标半径动态缩放”，以免受目的地定位误差影响。
+        """
         try:
-            cache_key_str = cache_key("attractions", destination)
+            cache_key_str = cache_key(
+                "attractions",
+                destination,
+                (start_date.date() if isinstance(start_date, datetime) else None),
+                (end_date.date() if isinstance(end_date, datetime) else None),
+            )
             
             # 检查缓存
             cached_data = await get_cache(cache_key_str)
@@ -375,7 +422,22 @@ class DataCollector:
                 logger.info(f"使用缓存的景点数据: {destination}")
                 return cached_data
             
-            attraction_data = []
+            attraction_data: List[Dict[str, Any]] = []
+
+            # 估算行程天数，用于决定“期望最少景点数量”
+            days = None
+            if start_date and end_date:
+                try:
+                    days = (end_date.date() - start_date.date()).days + 1
+                    if days <= 0:
+                        days = None
+                except Exception:
+                    days = None
+            if days is None:
+                days = 1
+            days = max(days, 1)
+
+            desired_min_attractions = max(self.plan_min_attractions_per_day * days, 1)
             
             # 根据地图服务提供商收集景点数据
             try:
@@ -395,7 +457,7 @@ class DataCollector:
                     
                     if places_result.get("status") == 0:
                         places = places_result.get("result", {}).get("items", [])
-                        for place in places[:10]:  # 取前10个景点
+                        for place in places:  # 先不过早裁剪，后面统一根据天数裁剪
                             attraction_item = {
                                 "name": place.get("name", "景点"),
                                 "category": "风景名胜",
@@ -422,7 +484,7 @@ class DataCollector:
                     
                     if museum_result.get("status") == 0:
                         museums = museum_result.get("result", {}).get("items", [])
-                        for museum in museums[:5]:  # 取前5个博物馆
+                        for museum in museums:  # 同样先全部收集，后面按天数控制总量
                             attraction_item = {
                                 "name": museum.get("name", "博物馆"),
                                 "category": "博物馆",
@@ -444,8 +506,8 @@ class DataCollector:
             except Exception as e:
                 logger.warning(f"百度地图景点API调用失败: {e}")
             
-            # 如果百度地图数据不足，使用MCP工具补充
-            if len(attraction_data) < 10:
+            # 如果数据不足，使用MCP工具补充
+            if len(attraction_data) < desired_min_attractions:
                 try:
                     mcp_data = await self.mcp_client.get_attractions(destination)
                     attraction_data.extend(mcp_data)
@@ -455,10 +517,23 @@ class DataCollector:
             
             # 已移除爬虫功能，只使用百度地图和MCP数据
             
+            # 根据行程天数对景点列表做一次软裁剪，避免数据过多或过少
+            if len(attraction_data) > desired_min_attractions * 2:
+                # 上限取“理论最少需求”的 2 倍，避免 LLM 提示太长
+                new_len = desired_min_attractions * 2
+                logger.info(
+                    f"根据行程天数裁剪景点数量: 原始 {len(attraction_data)} 条，"
+                    f"保留前 {new_len} 条（可通过 PLAN_MIN_ATTRACTIONS_PER_DAY 调整基数）"
+                )
+                attraction_data = attraction_data[:new_len]
+
             # 缓存数据
             await set_cache(cache_key_str, attraction_data, ttl=300)  # 5分钟缓存
-            
-            logger.info(f"收集到 {len(attraction_data)} 条景点数据")
+
+            logger.info(
+                f"收集到 {len(attraction_data)} 条景点数据（行程天数 {days} 天，"
+                f"期望最少 {desired_min_attractions} 条）"
+            )
             return attraction_data
             
         except Exception as e:
@@ -552,10 +627,24 @@ class DataCollector:
             logger.error(f"收集天气数据失败: {e}")
             return {}
     
-    async def collect_restaurant_data(self, destination: str) -> List[Dict[str, Any]]:
-        """收集餐厅数据"""
+    async def collect_restaurant_data(
+        self,
+        destination: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        """收集餐厅数据
+
+        同样根据行程天数估算需要的餐厅数量：大致「天数 × 每天用餐次数」，并据此控制
+        百度/高德/MCP 返回的数量，避免行程很长但餐厅数据太少或太多。
+        """
         try:
-            cache_key_str = cache_key("restaurants", destination)
+            cache_key_str = cache_key(
+                "restaurants",
+                destination,
+                (start_date.date() if isinstance(start_date, datetime) else None),
+                (end_date.date() if isinstance(end_date, datetime) else None),
+            )
             
             # 检查缓存
             cached_data = await get_cache(cache_key_str)
@@ -563,7 +652,22 @@ class DataCollector:
                 logger.info(f"使用缓存的餐厅数据: {destination}")
                 return cached_data
             
-            restaurant_data = []
+            restaurant_data: List[Dict[str, Any]] = []
+
+            # 根据行程天数估算需要的餐厅数量（粗略：天数 × 每天用餐次数）
+            days = None
+            if start_date and end_date:
+                try:
+                    days = (end_date.date() - start_date.date()).days + 1
+                    if days <= 0:
+                        days = None
+                except Exception:
+                    days = None
+            if days is None:
+                days = 1
+            days = max(days, 1)
+
+            desired_min_restaurants = max(self.plan_min_meals_per_day * days, 3)
             
             # 根据配置选择餐厅数据源
             restaurant_source = settings.RESTAURANT_DATA_SOURCE
@@ -583,7 +687,7 @@ class DataCollector:
                     
                     if restaurants_result.get("status") == 0:
                         restaurants = restaurants_result.get("result", {}).get("items", [])
-                        for restaurant in restaurants[:10]:  # 取前10个餐厅
+                        for restaurant in restaurants:  # 不提前裁剪
                             restaurant_item = {
                                 "name": restaurant.get("name", "餐厅"),
                                 "cuisine": restaurant.get("detail_info", {}).get("tag", "中餐"),
@@ -612,7 +716,7 @@ class DataCollector:
                     
                     if snack_result.get("status") == 0:
                         snacks = snack_result.get("result", {}).get("items", [])
-                        for snack in snacks[:5]:  # 取前5个小吃店
+                        for snack in snacks:  # 不提前裁剪
                             restaurant_item = {
                                 "name": snack.get("name", "小吃店"),
                                 "cuisine": "小吃",
@@ -656,7 +760,7 @@ class DataCollector:
                             offset=20
                         )
                         
-                        for amap_restaurant in amap_restaurants[:10]:  # 取前10个餐厅
+                        for amap_restaurant in amap_restaurants:  # 不提前裁剪
                             restaurant_item = {
                                 "name": amap_restaurant.get("name", "餐厅"),
                                 "cuisine": amap_restaurant.get("category", "中餐"),
@@ -689,7 +793,7 @@ class DataCollector:
                     logger.warning(f"高德地图餐厅周边搜索调用失败: {e}")
             
             # 如果数据仍然不足，使用MCP工具补充
-            if len(restaurant_data) < 10:
+            if len(restaurant_data) < desired_min_restaurants:
                 try:
                     mcp_data = await self.mcp_client.get_restaurants(destination)
                     for item in mcp_data:
@@ -700,10 +804,22 @@ class DataCollector:
             
             # 已移除爬虫功能，只使用百度地图和MCP数据
             
+            # 根据行程天数对餐厅列表做一次软裁剪，避免过多
+            max_restaurants = desired_min_restaurants * 2
+            if len(restaurant_data) > max_restaurants:
+                logger.info(
+                    f"根据行程天数裁剪餐厅数量: 原始 {len(restaurant_data)} 条，"
+                    f"保留前 {max_restaurants} 条（可通过 PLAN_MIN_MEALS_PER_DAY 调整基数）"
+                )
+                restaurant_data = restaurant_data[:max_restaurants]
+
             # 缓存数据
             await set_cache(cache_key_str, restaurant_data, ttl=300)  # 5分钟缓存
-            
-            logger.info(f"收集到 {len(restaurant_data)} 条餐厅数据")
+
+            logger.info(
+                f"收集到 {len(restaurant_data)} 条餐厅数据（行程天数 {days} 天，"
+                f"期望最少 {desired_min_restaurants} 条）"
+            )
             return restaurant_data
             
         except Exception as e:
