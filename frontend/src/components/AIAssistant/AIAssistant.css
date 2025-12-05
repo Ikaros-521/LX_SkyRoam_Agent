@@ -9,6 +9,10 @@
   height: 100%;
 }
 
+span.ant-modal-close-x {
+  color: white;
+}
+
 .ai-assistant-messages {
   flex: 1;
   overflow-y: auto;
