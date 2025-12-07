@@ -18,6 +18,7 @@ from app.schemas.travel_plan import (
 )
 from app.services.travel_plan_service import TravelPlanService
 from app.services.agent_service import AgentService
+from app.services.plan_generator import PlanGenerator
 from loguru import logger
 from fastapi.responses import HTMLResponse, JSONResponse, Response, PlainTextResponse, StreamingResponse
 import asyncio, time, json
@@ -25,7 +26,7 @@ from app.core.config import settings
 from fastapi.encoders import jsonable_encoder
 
 # 新增导入
-from app.core.security import get_current_user, is_admin
+from app.core.security import get_current_user, get_current_user_optional, is_admin
 from app.models.user import User
 from app.tasks.travel_plan_tasks import (
     generate_travel_plans_task as celery_generate_travel_plans_task,
@@ -540,6 +541,75 @@ async def get_my_plan_rating(
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     rating = await service.get_rating_by_user(plan_id, current_user.id)
     return rating
+
+@router.get("/{plan_id}/text-plan")
+async def get_text_plan(
+    plan_id: int,
+    max_chars: int = Query(2000, ge=500, le=5000, description="最大字符数限制"),
+    db: AsyncSession = Depends(get_async_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """获取纯文本旅行方案（LLM直接生成，不依赖爬取数据）
+    
+    注意：此方案基于LLM知识库生成，可能有滞后性，但主要景点信息通常是准确的。
+    适用于快速概览目的地玩法。
+    """
+    try:
+        service = TravelPlanService(db)
+        # 尝试获取计划（私有或公开）
+        plan = None
+        is_public = False
+        
+        # 先尝试私有计划
+        if current_user:
+            plan = await service.get_travel_plan(plan_id)
+            if plan and (is_admin(current_user) or plan.user_id == current_user.id):
+                pass  # 有权限访问
+            else:
+                plan = None
+        
+        # 如果私有计划不可访问，尝试公开计划
+        if not plan:
+            plan = await service.get_public_travel_plan(plan_id)
+            if plan:
+                is_public = True
+        
+        if not plan:
+            raise HTTPException(status_code=404, detail="旅行计划不存在或无权限访问")
+        
+        # 获取用户偏好（如果有）
+        preferences = {}
+        if hasattr(plan, 'preferences') and plan.preferences:
+            try:
+                if isinstance(plan.preferences, str):
+                    preferences = json.loads(plan.preferences)
+                elif isinstance(plan.preferences, dict):
+                    preferences = plan.preferences
+            except:
+                preferences = {}
+        
+        # 生成纯文本方案
+        generator = PlanGenerator()
+        text_plan = await generator.generate_text_plan(
+            plan=plan,
+            preferences=preferences,
+            max_chars=max_chars
+        )
+        
+        return {
+            "plan_id": plan_id,
+            "text_plan": text_plan,
+            "destination": plan.destination,
+            "duration_days": plan.duration_days,
+            "generated_at": datetime.utcnow().isoformat(),
+            "note": "此方案基于LLM知识库生成，可能有滞后性，但主要景点信息通常是准确的。"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取纯文本方案失败: {e}")
+        raise HTTPException(status_code=500, detail=f"生成纯文本方案失败: {str(e)}")
 
 def _render_plan_html(plan_data: dict) -> str:
     title = plan_data.get("title") or f"旅行方案 #{plan_data.get('id', '')}"

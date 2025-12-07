@@ -39,6 +39,8 @@ export const API_ENDPOINTS = {
   TRAVEL_PLAN_RATINGS: (id: number) => `/travel-plans/${id}/ratings`,
   TRAVEL_PLAN_RATINGS_SUMMARY: (id: number) => `/travel-plans/${id}/ratings/summary`,
   TRAVEL_PLAN_RATINGS_ME: (id: number) => `/travel-plans/${id}/ratings/me`,
+  // 新增：纯文本方案
+  TRAVEL_PLAN_TEXT_PLAN: (id: number) => `/travel-plans/${id}/text-plan`,
   
   // 目的地
   DESTINATIONS: '/destinations',

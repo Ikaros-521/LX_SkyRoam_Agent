@@ -18,7 +18,8 @@ import {
   Image,
   Collapse,
   Input,
-  message
+  message,
+  Empty
 } from 'antd';
 import { 
   CalendarOutlined, 
@@ -42,6 +43,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
 import { authFetch, fetchJson, getToken } from '../../utils/auth';
 import MapComponent from '../../components/MapComponent/MapComponent';
+import ReactMarkdown from 'react-markdown';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -878,6 +880,208 @@ const RestaurantCard: React.FC<{ restaurant: any }> = ({ restaurant }) => {
   );
 };
 
+// 纯文本方案组件
+const TextPlanTab: React.FC<{ planId: number; planDetail: PlanDetail | null }> = ({ planId, planDetail }) => {
+  const [textPlan, setTextPlan] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!planId) return;
+    
+    // 使用 AbortController 来取消重复请求
+    const abortController = new AbortController();
+    let isMounted = true;
+    
+    const fetchTextPlan = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const token = getToken();
+        const url = buildApiUrl(`${API_ENDPOINTS.TRAVEL_PLAN_TEXT_PLAN(planId)}?max_chars=2000`);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+          signal: abortController.signal,
+        });
+        
+        if (!response.ok) {
+          throw new Error(`获取纯文本方案失败: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // 只有在组件仍然挂载时才更新状态
+        if (isMounted) {
+          setTextPlan(data.text_plan || '');
+        }
+      } catch (err: any) {
+        // 忽略 AbortError（这是正常的取消操作）
+        if (err.name === 'AbortError') {
+          return;
+        }
+        
+        if (isMounted) {
+          console.error('获取纯文本方案失败:', err);
+          setError(err.message || '获取纯文本方案失败');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    fetchTextPlan();
+    
+    // 清理函数：取消请求并标记组件已卸载
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [planId]);
+
+  return (
+    <Card className="glass-card">
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Alert
+          message="纯文本方案说明"
+          description="此方案由AI直接生成，基于大模型知识库，可能有滞后性，但主要景点信息通常是准确的。适用于快速概览目的地玩法。"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <Spin size="large" />
+            <div style={{ marginTop: 16 }}>
+              <Text type="secondary">正在生成纯文本方案...</Text>
+            </div>
+          </div>
+        ) : error ? (
+          <Alert
+            message="加载失败"
+            description={error}
+            type="error"
+            showIcon
+          />
+        ) : textPlan ? (
+          <Card 
+            size="small" 
+            bordered={false} 
+            style={{ 
+              backgroundColor: 'transparent',
+              border: 'none',
+            }}
+          >
+            <div
+              style={{
+                wordBreak: 'break-word',
+                lineHeight: '1.8',
+                fontSize: '15px',
+                color: '#ffffff',
+                padding: '20px',
+                backgroundColor: 'transparent',
+              }}
+            >
+              <style>{`
+                .text-plan-markdown {
+                  color: #ffffff;
+                }
+                .text-plan-markdown h1,
+                .text-plan-markdown h2,
+                .text-plan-markdown h3,
+                .text-plan-markdown h4 {
+                  color: #ffffff;
+                  margin-top: 24px;
+                  margin-bottom: 16px;
+                  font-weight: 600;
+                }
+                .text-plan-markdown h1 {
+                  font-size: 24px;
+                  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+                  padding-bottom: 8px;
+                }
+                .text-plan-markdown h2 {
+                  font-size: 20px;
+                }
+                .text-plan-markdown h3 {
+                  font-size: 18px;
+                }
+                .text-plan-markdown h4 {
+                  font-size: 16px;
+                }
+                .text-plan-markdown p {
+                  margin-bottom: 12px;
+                  color: #ffffff;
+                  line-height: 1.8;
+                }
+                .text-plan-markdown ul,
+                .text-plan-markdown ol {
+                  margin-bottom: 12px;
+                  padding-left: 24px;
+                }
+                .text-plan-markdown li {
+                  margin-bottom: 8px;
+                  color: #ffffff;
+                }
+                .text-plan-markdown strong {
+                  color: #ffffff;
+                  font-weight: 600;
+                }
+                .text-plan-markdown code {
+                  background-color: rgba(255, 255, 255, 0.2);
+                  padding: 2px 6px;
+                  border-radius: 3px;
+                  font-family: 'Courier New', monospace;
+                  font-size: 13px;
+                  color: #ffffff;
+                }
+                .text-plan-markdown pre {
+                  background-color: rgba(255, 255, 255, 0.1);
+                  padding: 12px;
+                  border-radius: 4px;
+                  overflow-x: auto;
+                  margin-bottom: 12px;
+                }
+                .text-plan-markdown pre code {
+                  background-color: transparent;
+                  padding: 0;
+                  color: #ffffff;
+                }
+                .text-plan-markdown blockquote {
+                  border-left: 4px solid rgba(255, 255, 255, 0.5);
+                  padding-left: 16px;
+                  margin: 16px 0;
+                  color: #ffffff;
+                  background-color: rgba(255, 255, 255, 0.05);
+                  padding: 12px 16px;
+                }
+                .text-plan-markdown hr {
+                  border: none;
+                  border-top: 1px solid rgba(255, 255, 255, 0.3);
+                  margin: 24px 0;
+                }
+              `}</style>
+              <div className="text-plan-markdown">
+                <ReactMarkdown>{textPlan}</ReactMarkdown>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <Empty description="暂无纯文本方案" />
+        )}
+      </Space>
+    </Card>
+  );
+};
+
 const PlanDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1307,6 +1511,9 @@ const PlanDetailPage: React.FC = () => {
         </Card>
       ) : currentPlan ? (
         <Tabs defaultActiveKey="overview" style={{ marginBottom: '24px' }}>
+          <TabPane tab="纯大模型方案" key="text-plan">
+            <TextPlanTab planId={Number(id)} planDetail={planDetail} />
+          </TabPane>
           <TabPane tab="方案概览" key="overview">
             <Row gutter={[24, 24]}>
               <Col xs={24} lg={16}>

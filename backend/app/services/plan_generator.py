@@ -3366,6 +3366,94 @@ class PlanGenerator:
             
         return recommendations
 
+    async def generate_text_plan(
+        self,
+        plan: Any,
+        preferences: Optional[Dict[str, Any]] = None,
+        max_chars: int = 2000,
+    ) -> str:
+        """生成纯文本旅行方案（不依赖爬取数据，直接由LLM生成）
+        
+        Args:
+            plan: 旅行计划对象
+            preferences: 用户偏好
+            max_chars: 最大字符数限制（避免超token）
+            
+        Returns:
+            纯文本方案字符串
+        """
+        try:
+            system_prompt = f"""你是一位专业的旅行规划师。请根据用户需求生成一份简洁实用的旅行方案文本。
+
+要求：
+1. 方案要简洁明了，重点突出主要景点和玩法
+2. 总字数控制在{max_chars}字以内
+3. 包含目的地概况、主要景点、推荐玩法、注意事项等
+4. 基于你的知识库，虽然可能有滞后性，但主要景点信息应该是准确的
+5. 使用清晰的分段和标题，便于阅读
+
+请直接返回纯文本，不要使用markdown格式，使用中文标点符号。"""
+
+            destination = getattr(plan, "destination", "目的地")
+            duration_days = getattr(plan, "duration_days", 0) or 1
+            start_date = getattr(plan, "start_date", None)
+            budget = getattr(plan, "budget", None)
+            departure = getattr(plan, "departure", None)
+            requirements = getattr(plan, "requirements", None)
+            
+            num_people = (
+                getattr(plan, "num_people", None)
+                or getattr(plan, "travelers", None)
+                or (preferences or {}).get("travelers", 1)
+            )
+            age_groups = (preferences or {}).get("ageGroups", [])
+            food_preferences = (preferences or {}).get("foodPreferences", [])
+            activity_preference = (preferences or {}).get("activity_preference", [])
+
+            user_prompt = f"""请为以下旅行需求生成一份简洁的纯文本方案：
+
+目的地：{destination}
+旅行天数：{duration_days}天
+出发日期：{start_date or '未指定'}
+出发地：{departure or '未指定'}
+预算：{budget or '未指定'}元
+旅行人数：{num_people}人
+年龄群体：{', '.join(age_groups) if age_groups else '未指定'}
+饮食偏好：{', '.join(food_preferences) if food_preferences else '无特殊偏好'}
+活动偏好：{', '.join(activity_preference) if activity_preference else '未指定'}
+特殊要求：{requirements or '无特殊要求'}
+
+请生成一份简洁实用的旅行方案，包含：
+1. 目的地概况（2-3句话）
+2. 主要景点推荐（每天2-3个，按天列出）
+3. 推荐玩法（简要说明）
+4. 注意事项（简要提醒）
+
+总字数控制在{max_chars}字以内，使用清晰的分段，直接返回纯文本。"""
+
+            response = await openai_client.generate_text(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=min(settings.OPENAI_MAX_TOKENS, max_chars // 2),  # 保守估计token数
+                temperature=0.7
+            )
+            
+            if not response:
+                return "生成方案失败，请稍后重试。"
+            
+            # 清理响应并限制长度
+            cleaned = self._clean_llm_response(response).strip()
+            
+            # 如果超过最大字符数，截断
+            if len(cleaned) > max_chars:
+                cleaned = cleaned[:max_chars] + "..."
+            
+            return cleaned
+            
+        except Exception as e:
+            logger.error(f"生成纯文本方案失败: {e}")
+            return f"生成方案时出现错误：{str(e)}。请稍后重试。"
+
     async def _generate_plans_with_llm_fallback(
         self,
         processed_data: Dict[str, Any],
