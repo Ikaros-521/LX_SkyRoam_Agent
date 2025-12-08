@@ -1005,7 +1005,7 @@ ${textPlan}
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <Spin size="large" />
             <div style={{ marginTop: 16 }}>
-              <Text type="secondary">正在生成纯文本方案...</Text>
+              <Text type="secondary">正在生成纯文本方案，生成很快的，不要着急切换页面哦...</Text>
             </div>
           </div>
         ) : error ? (

@@ -385,7 +385,7 @@ const AIAssistant: React.FC = () => {
         open={visible}
         onCancel={() => setVisible(false)}
         footer={null}
-        width={600}
+        width={800}
         className="ai-assistant-modal"
         styles={{
           body: {
