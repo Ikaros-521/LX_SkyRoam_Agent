@@ -28,8 +28,8 @@ async def lifespan(app: FastAPI):
     logger = setup_logging()
     logger.info("🚀 启动 LX SkyRoam Agent...")
     
-    # 初始化数据库
-    await init_db()
+    # 初始化数据库（智能检查表是否存在，不存在则创建）
+    await init_db(use_alembic=False, create_tables_directly=True)
     logger.info("✅ 数据库初始化完成")
     
     # 初始化Redis
