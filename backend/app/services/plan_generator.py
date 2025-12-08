@@ -1286,7 +1286,10 @@ class PlanGenerator:
 重点偏好：{activity_pref}
 特殊要求：{plan.requirements or '无特殊要求'}
 
-真实可用数据：
+【主要数据源 - 小红书真实用户分享】：
+{self._format_xiaohongshu_data_for_prompt(raw_data.get('xiaohongshu_notes', []) if raw_data else [], plan.destination)}
+
+【参考数据 - 其他可用信息】：
 
 航班信息：
 {self._format_data_for_llm(processed_data.get('flights', []), 'flight')}
@@ -1294,7 +1297,8 @@ class PlanGenerator:
 酒店信息：
 {self._format_data_for_llm(processed_data.get('hotels', []), 'hotel')}
 
-景点信息（重点关注{activity_pref}相关）：
+景点定位数据（仅供参考，重点关注{activity_pref}相关）：
+注意：以下景点数据来自地图定位服务，由于定位精度限制，这些数据只是大概的参考，并不能代表一座城市所有的景点。请优先使用小红书数据中的景点信息。
 {self._format_data_for_llm(self._filter_attractions_by_preference(processed_data.get('attractions', []), activity_pref), 'attraction')}
 
 餐厅信息：
@@ -1306,20 +1310,18 @@ class PlanGenerator:
 天气信息：
 {processed_data.get('weather', {})}
 
-小红书真实用户分享（重要参考）：
-{self._format_xiaohongshu_data_for_prompt(raw_data.get('xiaohongshu_notes', []) if raw_data else [], plan.destination)}
-
-请基于以上真实数据生成{max_plans}个专注于{focus}的旅行方案。
+请基于以上数据生成{max_plans}个专注于{focus}的旅行方案。
 
 重要提醒：
 1. 必须严格按照指定的JSON格式返回
-2. 必须使用提供的真实数据，不要虚构信息
-3. 重点突出{activity_pref}相关的景点和活动
-4. 价格信息要基于真实数据，符合预算
-5. 景点安排要优先选择{activity_pref}类型的景点
+2. 计划生成必须以小红书用户的真实体验和建议为主，优先采用小红书中提到的景点、餐厅和活动
+3. 景点定位数据仅作为补充参考，当小红书数据不足时可以参考，但不能依赖这些数据作为主要依据
+4. 重点突出{activity_pref}相关的景点和活动
+5. 价格信息要基于真实数据，符合预算
 6. 餐饮建议要考虑与{activity_pref}景点的距离
 7. 根据旅行人数合理安排住宿、餐厅、交通
 8. 严格遵守饮食禁忌和偏好
+9. 确保行程的真实性和可操作性，所有推荐的景点、餐厅都应优先来自小红书用户的真实分享
 
 请直接返回JSON格式的结果，不要添加任何其他文本。
 """
@@ -2155,13 +2157,17 @@ class PlanGenerator:
 特殊要求：{plan.requirements or '无特殊要求'}
 用户偏好：{preferences or '无特殊偏好'}
 
-小红书真实用户体验分享：
+【主要数据源 - 小红书真实用户体验分享】：
 {self._format_xiaohongshu_data_for_prompt(xiaohongshu_notes, plan.destination)}
 
-可用景点数据（作为参考）：
+【参考数据 - 景点定位数据（仅供参考）】：
+注意：以下景点数据来自地图定位服务，由于定位精度限制，这些数据只是大概的参考，并不能代表一座城市所有的景点。请优先使用小红书数据中的景点信息。
 {self._format_data_for_llm(processed_data.get('attractions', []), 'attraction')}
 
-请基于小红书用户的真实体验和建议，生成详细的每日行程安排。优先采用小红书中提到的景点、餐厅和活动，确保行程的真实性和可操作性。
+重要提示：
+1. 计划生成必须以小红书用户的真实体验和建议为主，优先采用小红书中提到的景点、餐厅和活动；
+2. 景点定位数据仅作为补充参考，当小红书数据不足时可以参考，但不能依赖这些数据作为主要依据；
+3. 确保行程的真实性和可操作性，所有推荐的景点、餐厅都应优先来自小红书用户的真实分享。
 
 请直接返回JSON格式结果。"""
 
@@ -2867,13 +2873,15 @@ class PlanGenerator:
                     )
                 system_prompt = (
                     "你是一位资深景点规划师，请针对某一天制定详细的景点游览安排，"
-                    "需结合真实景点数据与小红书体验建议，输出结构化结果。\n"
+                    "需以小红书用户的真实体验为主，结合参考景点数据，输出结构化结果。\n"
                     "具体要求：\n"
-                    "1. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
-                    "2. 对于相距较远、需要长时间通勤的景点，当天安排的景点数量要减少，并在行程中明确写出长途通勤时间；\n"
-                    "3. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
-                    "4. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
-                    "5. 优先使用提供的真实景点数据，不要凭空捏造不存在的地点。"
+                    "1. 必须以小红书数据为主，优先选择小红书中用户真实分享的景点和体验；\n"
+                    "2. 景点定位数据仅作为补充参考，因为定位精度限制，这些数据只是大概的，不能代表一座城市所有景点；\n"
+                    "3. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
+                    "4. 对于相距较远、需要长时间通勤的景点，当天安排的景点数量要减少，并在行程中明确写出长途通勤时间；\n"
+                    "5. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
+                    "6. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
+                    "7. 不要凭空捏造不存在的地点，优先使用小红书数据中的景点信息。"
                 )
                 user_prompt = f"""
 请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的景点游览方案：
@@ -2885,13 +2893,19 @@ class PlanGenerator:
 - 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 - 特殊要求：{plan.requirements or '无'}
 
-真实景点数据：
-{self._format_data_for_llm(attractions_data, 'attraction')}
-
-小红书体验分享：
+【主要数据源 - 小红书真实体验分享】：
 {notes_str}
 
+【参考数据 - 景点定位数据（仅供参考）】：
+注意：以下景点数据来自地图定位服务，由于定位精度限制，这些数据只是大概的参考，并不能代表一座城市所有的景点。请优先使用小红书数据中的景点信息。
+{self._format_data_for_llm(attractions_data, 'attraction')}
+
 {intl_hint}
+
+重要提示：
+1. 必须优先使用小红书数据中的景点和体验，这是主要数据源；
+2. 景点定位数据仅作为补充参考，当小红书数据不足时可以参考，但不能依赖这些数据作为主要依据；
+3. 确保推荐的景点来自小红书用户的真实分享，保证行程的真实性和可操作性。
 
 请返回JSON对象，字段与示例一致：{{
   "day": {day},
@@ -2901,7 +2915,7 @@ class PlanGenerator:
   "estimated_cost": 参考费用,
   "daily_tips": [...]
 }}
-务必使用提供数据中的景点，并给出实用游览建议。"""
+务必优先使用小红书数据中的景点，并给出实用游览建议。"""
                 return system_prompt, user_prompt, min(settings.OPENAI_MAX_TOKENS, 1200), 0.6
 
             def post_process(entry: Dict[str, Any], day: int, date_str: str) -> Dict[str, Any]:
