@@ -1514,7 +1514,8 @@ class PlanGenerator:
                 {
                     "key": "accommodation",
                     "name": "住宿方案",
-                    "critical": True,
+                    # 住宿为空不再阻塞整体方案，允许使用其他模块或占位
+                    "critical": False,
                     "coro": run_with_retry(
                         self._generate_accommodation_plans,
                         processed_data.get('hotels', []),
