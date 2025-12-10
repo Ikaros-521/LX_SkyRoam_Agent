@@ -479,13 +479,40 @@ class DataCollector:
             
             # 根据行程天数对景点列表做一次软裁剪，避免数据过多或过少
             if len(attraction_data) > desired_min_attractions * 2:
-                # 上限取“理论最少需求”的 2 倍，避免 LLM 提示太长
+                # 上限取"理论最少需求"的 2 倍，避免 LLM 提示太长
                 new_len = desired_min_attractions * 2
                 logger.info(
                     f"根据行程天数裁剪景点数量: 原始 {len(attraction_data)} 条，"
                     f"保留前 {new_len} 条（可通过 PLAN_MIN_ATTRACTIONS_PER_DAY 调整基数）"
                 )
                 attraction_data = attraction_data[:new_len]
+
+            # 补充手动维护的详细信息（通过异步上下文管理器）
+            try:
+                from app.core.database import async_session
+                from app.services.attraction_detail_service import AttractionDetailService
+                
+                async with async_session() as db:
+                    try:
+                        # 提取城市信息（从目的地或坐标中）
+                        city = None
+                        # 可以尝试从目的地中提取城市，或从geocode_info中获取
+                        if geocode_info and geocode_info.get('city'):
+                            city = geocode_info['city']
+                        
+                        # 批量补充详细信息
+                        attraction_data = await AttractionDetailService.enrich_attractions_with_details(
+                            db=db,
+                            attractions=attraction_data,
+                            destination=destination,
+                            city=city
+                        )
+                        logger.info("✅ 已为景点数据补充手动维护的详细信息")
+                    except Exception as e:
+                        logger.warning(f"补充景点详细信息时出错（不影响主流程）: {e}")
+            except Exception as e:
+                # 如果没有数据库连接或服务不可用，继续使用原始数据
+                logger.debug(f"无法补充景点详细信息（数据库不可用）: {e}")
 
             # 缓存数据
             await set_cache(cache_key_str, attraction_data, ttl=300)  # 5分钟缓存

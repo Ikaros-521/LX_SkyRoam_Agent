@@ -10,6 +10,7 @@ import LoginPage from '../../pages/LoginPage/LoginPage';
 import RegisterPage from '../../pages/RegisterPage/RegisterPage';
 import UsersAdminPage from '../../pages/Admin/UsersAdminPage';
 import HistoryAdminPage from '../../pages/Admin/HistoryAdminPage';
+import AttractionDetailsAdminPage from '../../pages/Admin/AttractionDetailsAdminPage';
 import DestinationsPage from '../../pages/DestinationsPage/DestinationsPage';
 import PlansLibraryPage from '../../pages/PlansLibraryPage/PlansLibraryPage';
 import PlanEditPage from '../../pages/PlanEditPage/PlanEditPage';
@@ -29,6 +30,7 @@ const RouterApp: React.FC = () => {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
       <Route path="/admin/history" element={<RequireAdmin><HistoryAdminPage /></RequireAdmin>} />
+      <Route path="/admin/attraction-details" element={<RequireAdmin><AttractionDetailsAdminPage /></RequireAdmin>} />
       <Route path="/plan/:id/edit" element={<RequireAdmin><PlanEditPage /></RequireAdmin>} />
     </Routes>
   );

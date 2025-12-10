@@ -128,6 +128,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     ...(user?.role === 'admin' ? [
       { key: 'admin_users', label: '用户管理', icon: <UserOutlined />, onClick: () => navigate('/admin/users') },
       { key: 'admin_history', label: '历史记录管理', icon: <HistoryOutlined />, onClick: () => navigate('/admin/history') },
+      { key: 'admin_attractions', label: '景点信息管理', icon: <EnvironmentOutlined />, onClick: () => navigate('/admin/attraction-details') },
       { type: 'divider' as const },
     ] : []),
     { key: 'profile', label: '个人资料', onClick: () => setProfileVisible(true) },

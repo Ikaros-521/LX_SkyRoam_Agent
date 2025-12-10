@@ -51,6 +51,12 @@ export const API_ENDPOINTS = {
   USER_DETAIL: (id: number) => `/users/${id}`,
   USER_RESET_PASSWORD: (id: number) => `/users/${id}/reset-password`,
   
+  // 景点详细信息（管理员）
+  ATTRACTION_DETAILS: '/attraction-details',
+  ATTRACTION_DETAIL: (id: number) => `/attraction-details/${id}`,
+  ATTRACTION_DETAILS_DESTINATIONS: '/attraction-details/destinations/list',
+  ATTRACTION_DETAILS_CITIES: '/attraction-details/cities/list',
+  
   // Agent
   AGENTS: '/agents',
   AGENT_DETAIL: (id: number) => `/agents/${id}`,
