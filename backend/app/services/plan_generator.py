@@ -2604,7 +2604,7 @@ class PlanGenerator:
                 return []
 
             total_hotel_cost = sum(
-                entry.get("daily_cost", 0) for entry in daily_entries if isinstance(entry, dict)
+                self._safe_number(entry.get("daily_cost", 0)) for entry in daily_entries if isinstance(entry, dict)
             )
             first_flight = next(
                 (entry.get("flight") for entry in daily_entries if entry.get("flight")), {}
@@ -2619,9 +2619,9 @@ class PlanGenerator:
                 "hotel": first_hotel,
                 "daily_accommodation": daily_entries,
                 "total_accommodation_cost": {
-                    "flight": first_flight.get("price", 0),
+                    "flight": self._safe_number(first_flight.get("price", 0)),
                     "hotel": total_hotel_cost,
-                    "total": (first_flight.get("price", 0) or 0) + total_hotel_cost,
+                    "total": self._safe_number(first_flight.get("price", 0)) + total_hotel_cost,
                 },
                 "accommodation_highlights": [
                     highlight
@@ -3152,6 +3152,26 @@ class PlanGenerator:
             return max(total_budget / total_days, 0)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _safe_number(value: Any) -> float:
+        """
+        将带有货币符号/中文单位的字符串安全转为数字，失败返回0
+        """
+        if isinstance(value, (int, float)):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0.0
+        if isinstance(value, str):
+            import re
+            match = re.search(r"(-?\\d+(?:\\.\\d+)?)", value)
+            if match:
+                try:
+                    return float(match.group(1))
+                except (TypeError, ValueError):
+                    return 0.0
+        return 0.0
 
     def _get_day_attractions(self, attraction_plans: List[Dict[str, Any]], day: int) -> Dict[str, Any]:
         """获取指定天数的景点安排"""
