@@ -474,7 +474,11 @@ const AttractionCard: React.FC<{ attraction: Attraction; index: number }> = ({ a
   const ratingValue = toNumber(attraction.rating);
   const highlights = ensureArray(attraction.highlights);
   const experienceTips = ensureArray(attraction.experience_tips);
-  const cover = attraction.image_url;
+  const coverRaw = attraction.image_url;
+  const cover =
+    coverRaw && coverRaw.startsWith('http')
+      ? buildApiUrl(`/proxy/image?url=${encodeURIComponent(coverRaw)}&referer=${encodeURIComponent('https://place.qyer.com')}`)
+      : coverRaw;
   const openingText = attraction.opening_hours_text || attraction.opening_hours || attraction.best_visit_time;
   const hasMoreInfo = Boolean(
     attraction.website ||

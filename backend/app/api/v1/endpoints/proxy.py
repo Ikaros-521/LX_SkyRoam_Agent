@@ -15,6 +15,7 @@ _ALLOWED_HOSTS = {
     "sns-img-bd.xhscdn.com",
     "img.xiaohongshu.com",
     "ci.xiaohongshu.com",
+    "pic.qyer.com",
 }
 
 def _is_allowed_host(url: str) -> bool:
@@ -26,7 +27,11 @@ def _is_allowed_host(url: str) -> bool:
         if host in _ALLOWED_HOSTS:
             return True
         # 允许子域的通配
-        return host.endswith(".xhscdn.com") or host.endswith(".xiaohongshu.com")
+        return (
+            host.endswith(".xhscdn.com")
+            or host.endswith(".xiaohongshu.com")
+            or host.endswith(".qyer.com")
+        )
     except Exception:
         return False
 
@@ -83,6 +88,52 @@ async def proxy_image(
 
     logger.debug(f"[图片代理] 请求URL: {url}")
     logger.debug(f"[图片代理] 请求头: {{'User-Agent': headers['User-Agent'], 'Referer': headers['Referer'], 'Host': headers['Host'], 'Cookie': '***' if 'Cookie' in headers else '(none)'}}")
+
+    # 如果是穷游图片，直接走源站，不经过小红书转发
+    host = (parsed.hostname or "").lower()
+    if host.endswith(".qyer.com") or host == "pic.qyer.com":
+        qyer_referer = "https://place.qyer.com"
+        qyer_headers = {
+            "User-Agent": headers["User-Agent"],
+            "Accept": headers["Accept"],
+            "Referer": qyer_referer,
+            "Origin": qyer_referer,
+            "Accept-Language": headers["Accept-Language"],
+            "Accept-Encoding": headers["Accept-Encoding"],
+            "Connection": headers["Connection"],
+            "Host": host,
+        }
+
+        async def _fetch_qyer(target_url: str):
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, verify=False, http2=False) as client:
+                return await client.get(target_url, headers=qyer_headers)
+
+        try:
+            resp = await _fetch_qyer(url)
+        except httpx.ConnectError as e:
+            # 有些环境对 https 443 连不通，尝试 http 80 回退
+            logger.warning(f"[图片代理][qyer] https 连接失败，回退 http: {e!r}")
+            if url.startswith("https://"):
+                http_url = url.replace("https://", "http://", 1)
+                try:
+                    resp = await _fetch_qyer(http_url)
+                except Exception as e2:
+                    logger.error(f"[图片代理][qyer] http 回退也失败: {type(e2).__name__} {e2!r}")
+                    raise HTTPException(status_code=502, detail=f"源站请求失败: {type(e2).__name__}: {e2}")
+            else:
+                raise HTTPException(status_code=502, detail=f"源站请求失败: {type(e).__name__}: {e}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[图片代理][qyer] 请求异常: {type(e).__name__} {e!r}")
+            raise HTTPException(status_code=502, detail=f"源站请求失败: {type(e).__name__}: {e}")
+
+        if resp.status_code != 200:
+            body = (resp.text or "")[:200]
+            logger.error(f"[图片代理][qyer] 非200响应 status={resp.status_code} body={body}")
+            raise HTTPException(status_code=resp.status_code, detail="源站返回非200")
+        ct = resp.headers.get("content-type", "image/jpeg")
+        return StreamingResponse(resp.aiter_bytes(), media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
 
     api_base = settings.XHS_API_BASE
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:

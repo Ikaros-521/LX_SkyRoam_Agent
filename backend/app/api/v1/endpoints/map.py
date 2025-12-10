@@ -99,8 +99,8 @@ async def get_static_map(
             return Response(content=img, media_type="image/png", headers={"X-Map-Fallback": "true", "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*"})
         
         # 请求静态地图
-        logger.info(f"请求地图API: {url}")
-        logger.info(f"请求参数: {params}")
+        logger.debug(f"请求地图API: {url}")
+        logger.debug(f"请求参数: {params}")
         
         # 结果缓存（base64）
         from app.core.redis import get_cache as rc_get, set_cache as rc_set
