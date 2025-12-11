@@ -360,15 +360,23 @@ interface LimitedTagListProps {
 const LimitedTagList: React.FC<LimitedTagListProps> = ({ items, color = 'default', max, tagStyle, renderItem }) => {
   if (!items || items.length === 0) return null;
   const data = typeof max === 'number' ? items.slice(0, max) : items;
-  const mergedStyle: React.CSSProperties = { fontSize: 10, ...(tagStyle || {}) };
+  const mergedStyle: React.CSSProperties = { 
+    fontSize: 10, 
+    maxWidth: 'calc(100% - 4px)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    flex: '0 1 auto',
+    ...(tagStyle || {}) 
+  };
   return (
-    <Space wrap size={4} className="limited-tags">
+    <div className="limited-tags" style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
       {data.map((item, index) => (
         <Tag key={index} color={color} style={mergedStyle as any}>
           {renderItem ? renderItem(item, index) : (typeof item === 'string' ? item : item?.name || '推荐项')}
         </Tag>
       ))}
-    </Space>
+    </div>
   );
 };
 
@@ -492,7 +500,7 @@ const AttractionCard: React.FC<{ attraction: Attraction; index: number }> = ({ a
 
   return (
     <Card key={index} size="small" style={{ backgroundColor: 'rgba(82, 196, 26, 0.12)' }}>
-      <Space align="start" size={12} style={{ width: '100%' }}>
+      <Space align="start" size={12} style={{ width: '100%', alignItems: 'flex-start' }}>
         {cover ? (
           <Image
             src={cover}
@@ -503,31 +511,31 @@ const AttractionCard: React.FC<{ attraction: Attraction; index: number }> = ({ a
             fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iODAiIGZpbGw9IiNGNUY1RjUiLz48cGF0aCBkPSJNNTAgNDBINDBWMzBINTBWNDBaIiBmaWxsPSIjRDlEOUQ5Ii8+PC9zdmc+"
           />
         ) : null}
-        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+        <Space direction="vertical" size={4} style={{ width: '100%', flex: 1, minWidth: 0 }}>
           <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-            <Text strong>{attraction.name || `景点${index + 1}`}</Text>
-            <Rate disabled value={ratingValue} style={{ fontSize: 10 }} />
+            <Text strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{attraction.name || `景点${index + 1}`}</Text>
+            <Rate disabled value={ratingValue} style={{ fontSize: 10, flexShrink: 0 }} />
           </Space>
           {attraction.description && (
-            <Text type="secondary" style={{ fontSize: 12 }}>{attraction.description}</Text>
+            <Text type="secondary" style={{ fontSize: 12, wordBreak: 'break-word' }}>{attraction.description}</Text>
           )}
-          <Space size={4} wrap>
+          <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
             {attraction.category && (
-              <Tag color="green" style={{ fontSize: 10 }}>
+              <Tag color="green" style={{ fontSize: 10, maxWidth: 'calc(100% - 8px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>
                 <TagOutlined style={{ fontSize: 8 }} /> {attraction.category}
               </Tag>
             )}
             {openingText && (
-              <Tag color="orange" style={{ fontSize: 10 }}>
+              <Tag color="orange" style={{ fontSize: 10, maxWidth: 'calc(100% - 8px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>
                 <ClockCircleOutlined style={{ fontSize: 8 }} /> {openingText}
               </Tag>
             )}
             {attraction.price_note && (
-              <Tag color="gold" style={{ fontSize: 10 }}>
+              <Tag color="gold" style={{ fontSize: 10, maxWidth: 'calc(100% - 8px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>
                 <DollarOutlined style={{ fontSize: 8 }} /> {attraction.price_note}
               </Tag>
             )}
-          </Space>
+          </div>
           {attraction.address && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               <EnvironmentOutlined style={{ marginRight: 4 }} />
@@ -535,33 +543,33 @@ const AttractionCard: React.FC<{ attraction: Attraction; index: number }> = ({ a
             </Text>
           )}
           {attraction.phone && (
-            <Space size={8} wrap>
-              <Tag color="blue" style={{ fontSize: 10 }}><PhoneOutlined /> {attraction.phone}</Tag>
-            </Space>
+            <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <Tag color="blue" style={{ fontSize: 10, maxWidth: 'calc(100% - 8px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}><PhoneOutlined /> {attraction.phone}</Tag>
+            </div>
           )}
           {hasMoreInfo && (
             <Collapse ghost size="small" style={{ width: '100%' }}>
               <Collapse.Panel header="更多信息" key="more">
-                <Space size={6} wrap>
-                  {attraction.website && <Tag color="geekblue" style={{ fontSize: 10 }}><ExportOutlined /> {attraction.website}</Tag>}
-                  {attraction.wechat && <Tag color="cyan" style={{ fontSize: 10 }}>微信 {attraction.wechat}</Tag>}
-                  {attraction.email && <Tag color="purple" style={{ fontSize: 10 }}>{attraction.email}</Tag>}
+                <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {attraction.website && <Tag color="geekblue" style={{ fontSize: 10, maxWidth: 'calc(100% - 6px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}><ExportOutlined /> {attraction.website}</Tag>}
+                  {attraction.wechat && <Tag color="cyan" style={{ fontSize: 10, maxWidth: 'calc(100% - 6px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>微信 {attraction.wechat}</Tag>}
+                  {attraction.email && <Tag color="purple" style={{ fontSize: 10, maxWidth: 'calc(100% - 6px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>{attraction.email}</Tag>}
                   {attraction.rating_level && (
-                    <Tag color="gold" style={{ fontSize: 10 }}>
+                    <Tag color="gold" style={{ fontSize: 10, maxWidth: 'calc(100% - 6px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>
                       <StarOutlined style={{ fontSize: 8 }} /> 评分 {attraction.rating_level}
                     </Tag>
                   )}
                   {typeof attraction.review_count === 'number' && (
-                    <Tag color="blue" style={{ fontSize: 10 }}>
+                    <Tag color="blue" style={{ fontSize: 10, maxWidth: 'calc(100% - 6px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>
                       {attraction.review_count} 条点评
                     </Tag>
                   )}
                   {attraction.detail_verified && (
-                    <Tag color={attraction.detail_verified === 'verified' ? 'cyan' : (attraction.detail_verified === 'outdated' ? 'red' : 'geekblue')} style={{ fontSize: 10 }}>
+                    <Tag color={attraction.detail_verified === 'verified' ? 'cyan' : (attraction.detail_verified === 'outdated' ? 'red' : 'geekblue')} style={{ fontSize: 10, maxWidth: 'calc(100% - 6px)', whiteSpace: 'normal', wordBreak: 'break-word', flex: '0 1 auto' }}>
                       来源: {attraction.detail_source || 'manual'} · {attraction.detail_verified === 'verified' ? '已核实' : (attraction.detail_verified === 'outdated' ? '过期' : '待核实')}
                     </Tag>
                   )}
-                </Space>
+                </div>
               </Collapse.Panel>
             </Collapse>
           )}
@@ -1506,7 +1514,7 @@ const PlanDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="plan-detail-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="plan-detail-page" style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px' }}>
       {/* 计划头部信息 */}
       <Card className="plan-header-card" style={{ marginBottom: '24px' }}>
         <Row gutter={[24, 16]} align="middle">
