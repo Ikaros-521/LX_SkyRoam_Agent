@@ -51,7 +51,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       }
     };
     fetchMe();
-  }, [token]);
+  }, [token, profileForm]);
 
   // 嵌入式菜单：将“创建计划”移出菜单作为CTA按钮
   const baseMenuItems = [
@@ -245,7 +245,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         style={{ textAlign: 'center', background: '#0f0f1e', borderTop: '1px solid rgba(255,255,255,0.1)' }}
       >
         <div style={{ color: 'rgba(255,255,255,0.7)' }}>
-          <p style={{ margin: '8px 0' }}>© 2025 洛曦 云旅Agent. 智能旅游攻略生成器</p>
+          <p style={{ margin: '8px 0' }}>
+            © 2025{' '}
+            <a
+              href="https://luoxiai.dpdns.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'inherit', textDecoration: 'none' }}
+            >
+              洛曦 云旅Agent
+            </a>
+            . 智能旅游攻略生成器
+          </p>
           <p style={{ margin: '8px 0', fontSize: '12px' }}>基于AI技术，为您提供个性化的旅行方案规划</p>
         </div>
       </Footer>
