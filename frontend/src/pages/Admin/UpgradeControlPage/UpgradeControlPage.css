@@ -204,6 +204,10 @@
   margin-left: 20px;
 }
 
+.ant-alert-message,
+.ant-alert-description {
+  color: #fff !important;
+}
 
 /* 响应式设计 */
 @media (max-width: 768px) {
